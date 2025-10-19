@@ -3416,7 +3416,7 @@ def script_15():
 
 
 def script_16():
-    """16.删除错误的 {} .py - 原封不动"""
+    """16.删除错误的 {} .py - 修复路径问题"""
     print("=== 执行: 16.删除错误的 {} .py ===")
     
     import os
@@ -3521,9 +3521,8 @@ def script_16():
 
     def main():
         """主函数"""
-        # 设置工作目录为脚本所在目录
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        os.chdir(script_dir)
+        # 使用工具箱统一的根目录
+        script_dir = ROOT_DIR
         
         # 目标目录
         target_dir = os.path.join(script_dir, "game", "tl", "schinese")
@@ -3575,7 +3574,7 @@ def script_16():
     main()
 
 def script_17():
-    """17.规则替换.py - 原封不动"""
+    """17.规则替换.py - 修复路径问题"""
     print("=== 执行: 17.规则替换.py ===")
     
     import os
@@ -3584,7 +3583,7 @@ def script_17():
     def main():
         print("=== 🎮 RPY 文件处理脚本开始执行 ===\n")
 
-        # 1️⃣ 确定根目录
+        # 1️⃣ 使用工具箱统一的根目录
         root_dir = ROOT_DIR
         print(f"【1】根目录路径：{root_dir}")
 
@@ -3670,13 +3669,13 @@ def script_17():
     main()
 
 def script_18():
-    """18.规则还原.py - 原封不动"""
+    """18.规则还原.py - 修复路径问题"""
     print("=== 执行: 18.规则还原.py ===")
     
     import os
 
     def main():
-        # 1. 根目录
+        # 1. 使用工具箱统一的根目录
         root_dir = ROOT_DIR
         schinese_dir = os.path.join(root_dir, "schinese")
         result_file = os.path.join(root_dir, "result.txt")
