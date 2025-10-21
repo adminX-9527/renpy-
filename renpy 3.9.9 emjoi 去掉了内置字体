@@ -1645,147 +1645,215 @@ def script_09():
 # ---------------------------- 功能区三 ----------------------------
 
 def script_10():
-    """10.插入中文设置模块.py - 原封不动"""
+    """10.插入中文设置模块.py - 重构版"""
     print("=== 执行: 10.插入中文设置模块.py ===")
     
     import os
-    import shutil
-
+    
     # 游戏根目录，脚本所在目录
     ROOT_DIR_LOCAL = ROOT_DIR
     GAME_DIR = os.path.join(ROOT_DIR_LOCAL, "game")
-
+    
     def log(msg):
         print(f"[INFO] {msg}")
-
-    def copy_file_to_root(src_filename):
-        src_path = os.path.join(GAME_DIR, src_filename)
-        dst_path = os.path.join(ROOT_DIR_LOCAL, src_filename)
-        if not os.path.exists(src_path):
-            log(f"源文件不存在: {src_path}")
-            return None
-        shutil.copy2(src_path, dst_path)
-        log(f"已复制 {src_path} 到 {dst_path}")
-        return dst_path
-
+    
     def read_lines(filepath):
+        """读取文件内容"""
         with open(filepath, "r", encoding="utf-8") as f:
             return f.readlines()
-
+    
     def write_lines(filepath, lines):
+        """写入文件内容"""
         with open(filepath, "w", encoding="utf-8") as f:
             f.writelines(lines)
         log(f"已写入文件: {filepath}, 共 {len(lines)} 行")
-
-    def find_screen_preferences(lines):
+    
+    def find_radio_vbox_structure(lines):
+        """查找 vbox: 和 style_prefix "radio" 结构"""
         for i, line in enumerate(lines):
-            if line.strip().startswith("screen preferences"):
-                log(f"定位到 screen preferences, 行号: {i}")
-                return i
+            # 查找 vbox: 行（不考虑缩进）
+            if 'vbox:' in line and not line.strip().startswith('#'):
+                # 检查下一行是否有 style_prefix "radio"（4空格缩进）
+                if i + 1 < len(lines) and '    style_prefix "radio"' in lines[i + 1]:
+                    log(f"找到 radio vbox 结构，行号: {i}")
+                    return i
         return None
-
-    def find_vbox_structure(lines, start_index):
-        for i in range(start_index, len(lines)-1):
-            line = lines[i]
-            next_line = lines[i+1]
-            if line.lstrip().startswith("vbox:") and \
-               next_line.lstrip().startswith('style_prefix "check"'):
-                log(f"找到代码结构A vbox, 行号: {i}")
+    
+    def find_vbox_end(lines, start_index):
+        """查找 vbox 代码块的结束位置"""
+        # 获取 vbox 的缩进级别
+        vbox_indent = len(lines[start_index]) - len(lines[start_index].lstrip())
+        
+        # 从 vbox 开始位置向后查找
+        i = start_index + 1
+        while i < len(lines):
+            current_line = lines[i]
+            # 如果当前行的缩进小于等于 vbox 的缩进，且不是空行，说明 vbox 块结束
+            current_indent = len(current_line) - len(current_line.lstrip())
+            if current_line.strip() and current_indent <= vbox_indent:
                 return i
-        return None
-
-    def find_nearest_vbox(lines, start_index, end_index):
-        for i in range(start_index+1, end_index):
-            if lines[i].lstrip().startswith("vbox:"):
-                log(f"找到最近 vbox 代码结构, 行号: {i}")
-                return i
-        return None
-
-    def insert_radio_code(lines, index_a, index_b):
-        indent_b = len(lines[index_b]) - len(lines[index_b].lstrip())
+            i += 1
+        
+        # 如果没找到，返回文件末尾
+        return len(lines)
+    
+    def insert_radio_code(lines, vbox_index, language_option):
+        """插入语言选择代码"""
+        # 获取 vbox 的缩进级别
+        vbox_indent = len(lines[vbox_index]) - len(lines[vbox_index].lstrip())
+        
+        # 查找 vbox 代码块的结束位置
+        vbox_end_index = find_vbox_end(lines, vbox_index)
+        log(f"vbox 代码块结束位置: {vbox_end_index}")
+        
+        # 生成语言选择代码
         radio_code = [
-            ' ' * indent_b + "vbox:\n",
-            ' ' * (indent_b + 4) + 'style_prefix "radio"\n',
-            ' ' * (indent_b + 4) + 'label ("Language")\n',
-            ' ' * (indent_b + 4) + 'textbutton ("English") action Language(None)\n',
-            ' ' * (indent_b + 4) + 'textbutton ("中文") text_font "tl/schinese/fonts/MiSans-Regular.ttf" action Language("schinese")\n'
+            ' ' * vbox_indent + "vbox:\n",
+            ' ' * (vbox_indent + 4) + 'style_prefix "radio"\n',
+            ' ' * (vbox_indent + 4) + 'label _("Language")\n',
+            ' ' * (vbox_indent + 4) + 'textbutton _("English") action Language(None)\n',
+            ' ' * (vbox_indent + 4) + f'textbutton _("中文") action Language("{language_option}")\n'
         ]
-
-        blank_line_index = None
-        for i in range(index_a+1, index_b):
-            if lines[i].strip() == "":
-                blank_line_index = i
-                log(f"在索引A与B之间找到空白行, 行号: {i}")
-                break
-
-        if blank_line_index is not None:
-            lines.insert(blank_line_index, "\n")
-            lines.insert(blank_line_index, "\n")
-            for j, code_line in enumerate(radio_code):
-                lines.insert(blank_line_index + 1 + j, code_line)
-            log(f"在空白行下方插入radio代码, 插入起始行号: {blank_line_index+1}")
-        else:
-            for _ in range(3):
-                lines.insert(index_b, "\n")
-            for j, code_line in enumerate(radio_code):
-                lines.insert(index_b + 1 + j, code_line)
-            log(f"在索引B上方插入radio代码, 插入起始行号: {index_b+1}")
-
+        
+        # 在 vbox 结束位置先插入代码，然后插入空行
+        for j, code_line in enumerate(radio_code):
+            lines.insert(vbox_end_index + j, code_line)
+        
+        # 在插入的代码后面添加空行
+        lines.insert(vbox_end_index + len(radio_code), "\n")
+        
+        log(f"在行号 {vbox_end_index} 插入语言选择代码，并在代码后添加空行")
         return lines
-
-    def insert_language_define():
-        options_path = copy_file_to_root("options.rpy")
-        if options_path is None:
-            log("options.rpy 文件复制失败，退出")
-            return
-        lines = read_lines(options_path)
-        define_index = None
+    
+    def insert_language_define(filepath, language_option):
+        """在 options.rpy 中插入语言定义"""
+        lines = read_lines(filepath)
+        
+        # 查找第一个以 define 开头的行（没有缩进）
+        first_define_index = -1
         for i, line in enumerate(lines):
-            if line.strip().startswith("define config.name ="):
-                define_index = i
-                log(f"定位到 define config.name =, 行号: {i}")
+            stripped_line = line.lstrip()
+            if stripped_line.startswith('define ') and not line.startswith(' ') and not line.startswith('\t'):
+                first_define_index = i
+                log(f"找到第一个 define 行，行号: {i}, 内容: {line.strip()}")
                 break
-        if define_index is not None:
-            insert_index = define_index + 1
-            lines.insert(insert_index, '\n')
-            lines.insert(insert_index + 1, 'define config.language = "schinese"\n')
-            write_lines(options_path, lines)
-            log(f"在 options.rpy 中插入 define config.language = 'schinese', 行号: {insert_index+1}")
+        
+        if first_define_index == -1:
+            log("未找到以 define 开头的行，在第一行插入语言定义")
+            # 在第一行插入
+            lines.insert(0, f'define config.language = "{language_option}"\n')
+            lines.insert(1, "\n")
         else:
-            log("未找到 define config.name =，无法插入语言定义")
-
+            # 在第一个 define 行下方插入语言定义
+            insert_index = first_define_index + 1
+            lines.insert(insert_index, f'define config.language = "{language_option}"\n')
+            log(f"在第一个 define 行下方插入语言定义，插入位置: {insert_index}")
+        
+        write_lines(filepath, lines)
+        log(f"在 options.rpy 中插入 define config.language = '{language_option}'")
+    
+    def find_rpy_files(exclude_dirs=None):
+        """查找 game 目录下的 rpy 文件（排除指定目录）"""
+        if exclude_dirs is None:
+            exclude_dirs = ['tl']
+        
+        rpy_files = []
+        for root, dirs, files in os.walk(GAME_DIR):
+            # 排除指定目录
+            root_rel = os.path.relpath(root, GAME_DIR)
+            if any(excluded in root_rel for excluded in exclude_dirs):
+                continue
+            
+            for file in files:
+                if file.endswith('.rpy'):
+                    rpy_files.append(os.path.join(root, file))
+        
+        return rpy_files
+    
+    def select_language_option():
+        """选择语言选项"""
+        print("\n请选择语言选项：")
+        print("1: schinese")
+        print("2: chinese") 
+        print("3: 自定义")
+        
+        while True:
+            choice = input("请输入选择 (1/2/3): ").strip()
+            if choice == "1":
+                return "schinese"
+            elif choice == "2":
+                return "chinese"
+            elif choice == "3":
+                custom_lang = input("请输入自定义语言选项: ").strip()
+                if custom_lang:
+                    return custom_lang
+                else:
+                    print("自定义语言不能为空，请重新输入")
+            else:
+                print("无效选择，请重新输入")
+    
     def main():
         log("脚本开始执行")
-        screens_path = copy_file_to_root("screens.rpy")
-        if screens_path is None:
-            log("screens.rpy 文件复制失败，退出")
+        
+        # 1. 选择语言选项
+        language_option = select_language_option()
+        log(f"选择的语言选项: {language_option}")
+        
+        # 2. 查找 screens.rpy 文件
+        log("正在查找 screens.rpy 文件...")
+        screens_files = [f for f in find_rpy_files() if os.path.basename(f) == 'screens.rpy']
+        
+        if not screens_files:
+            log("未找到 screens.rpy 文件，跳转到 options.rpy 处理")
+            # 跳转到 options.rpy 处理
+            process_options_rpy(language_option)
             return
-
+        
+        # 3. 直接处理第一个找到的 screens.rpy 文件
+        screens_path = screens_files[0]
+        log(f"直接处理 screens.rpy 文件: {screens_path}")
+        
+        # 4. 读取并处理 screens.rpy
         lines = read_lines(screens_path)
-        screen_pref_index = find_screen_preferences(lines)
-        if screen_pref_index is None:
-            log("未找到 screen preferences，跳转步骤7")
-            insert_language_define()
+        
+        # 5. 查找 radio vbox 结构
+        radio_vbox_index = find_radio_vbox_structure(lines)
+        
+        if radio_vbox_index is not None:
+            # 找到结构，插入语言选择代码
+            log("找到 radio vbox 结构，准备插入语言选择代码")
+            lines = insert_radio_code(lines, radio_vbox_index, language_option)
+            write_lines(screens_path, lines)
+            log("成功在 screens.rpy 中插入语言选择代码")
         else:
-            index_a = find_vbox_structure(lines, screen_pref_index)
-            if index_a is None:
-                log("未找到代码结构A，删除 screens.rpy 并执行逻辑7")
-                os.remove(screens_path)
-                log("已删除根目录下 screens.rpy")
-                insert_language_define()
-            else:
-                index_b = find_nearest_vbox(lines, index_a, len(lines))
-                if index_b is None:
-                    index_b = index_a
-                    log("未找到索引B, 使用索引A作为参考")
-                lines = insert_radio_code(lines, index_a, index_b)
-                write_lines(screens_path, lines)
-                log("操作完成，原始代码未修改，仅插入新代码")
-
-        log("脚本执行完毕，手动关闭执行面板查看结果")
-        input("按回车键返回主菜单...")
-
-    main()     
+            # 未找到结构，处理 options.rpy
+            log("未找到 radio vbox 结构，处理 options.rpy")
+            process_options_rpy(language_option)
+    
+    def process_options_rpy(language_option):
+        """处理 options.rpy 文件"""
+        log("开始处理 options.rpy 文件")
+        
+        # 1. 查找 options.rpy 文件
+        options_files = [f for f in find_rpy_files() if os.path.basename(f) == 'options.rpy']
+        
+        if not options_files:
+            log("未找到 options.rpy 文件")
+            return
+        
+        # 2. 直接处理第一个找到的 options.rpy 文件
+        options_path = options_files[0]
+        log(f"直接处理 options.rpy 文件: {options_path}")
+        
+        # 3. 插入语言定义
+        insert_language_define(options_path, language_option)
+        log("options.rpy 处理完成")
+    
+    # 执行主函数
+    main()
+    
+    log("脚本执行完毕")
+    input("按回车键返回主菜单...")    
 
 def script_11():
     """11.生成style字体控制模块2.3.py -修改版 """
@@ -2107,12 +2175,11 @@ def script_12():
     input("按回车键返回主菜单...")
 
 def script_13():
-    """13.修改打包配置.py - 原封不动"""
+    """13.修改打包配置.py - 直接修改原文件版"""
     print("=== 执行: 13.修改打包配置.py ===")
     
     import os
     import re
-    import shutil
 
     # 当前目录视为游戏根目录
     game_root = ROOT_DIR
@@ -2143,20 +2210,28 @@ def script_13():
     pattern_classify = re.compile(r'build\.classify\(\s*["\']game/[^"\']+["\']\s*,\s*["\'][^"\']+["\']\s*\)')
 
     for rpy_path in rpy_files:
-        with open(rpy_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
+        print(f"检查文件: {os.path.relpath(rpy_path, game_root)}")
+        
+        try:
+            with open(rpy_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+        except Exception as e:
+            print(f"  ❌ 读取文件失败: {e}")
+            continue
 
         # === 1：优先查找 build.archive ===
         match_archive = pattern_archive.search(content)
         if match_archive:
             found_archive = True
-            print(f"[+] 检测到 build.archive: {os.path.relpath(rpy_path, game_root)}")
+            print(f"  ✅ 检测到 build.archive")
 
-            new_path = os.path.join(game_root, os.path.basename(rpy_path))
-            shutil.copy2(rpy_path, new_path)
-            print(f"    已复制到根目录: {os.path.basename(new_path)}")
+            try:
+                with open(rpy_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+            except Exception as e:
+                print(f"  ❌ 重新读取文件失败: {e}")
+                continue
 
-            lines = content.splitlines()
             insert_index = None
 
             # 找到匹配行后，定位其下方的第一个空行
@@ -2165,30 +2240,40 @@ def script_13():
                     for j in range(i + 1, len(lines)):
                         if lines[j].strip() == "":
                             insert_index = j
+                            print(f"  📍 找到插入位置: 第 {j+1} 行 (空行)")
                             break
                     break
 
             if insert_index is not None:
-                lines.insert(insert_index, '    build.classify("game/tl/schinese/**", "scripts")')
-                with open(new_path, "w", encoding="utf-8") as f:
-                    f.write("\n".join(lines))
-                print("    已在空行插入 build.classify 语句\n")
+                # 在空行插入 build.classify 语句
+                lines.insert(insert_index, '    build.classify("game/tl/schinese/**", "scripts")\n')
+                
+                try:
+                    with open(rpy_path, "w", encoding="utf-8") as f:
+                        f.writelines(lines)
+                    print(f"  ✅ 成功插入 build.classify 配置")
+                    print(f"  📝 插入内容: build.classify(\"game/tl/schinese/**\", \"scripts\")")
+                except Exception as e:
+                    print(f"  ❌ 写入文件失败: {e}")
             else:
-                print("    未找到插入位置，跳过。\n")
+                print("  ⚠️  未找到合适的插入位置，跳过")
 
+            print()
             continue
 
         # === 2：若未发现 archive，则查找 classify ===
         match_classify = pattern_classify.search(content)
         if match_classify:
             found_classify = True
-            print(f"[+] 检测到 build.classify: {os.path.relpath(rpy_path, game_root)}")
+            print(f"  ✅ 检测到 build.classify")
 
-            new_path = os.path.join(game_root, os.path.basename(rpy_path))
-            shutil.copy2(rpy_path, new_path)
-            print(f"    已复制到根目录: {os.path.basename(new_path)}")
+            try:
+                with open(rpy_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+            except Exception as e:
+                print(f"  ❌ 重新读取文件失败: {e}")
+                continue
 
-            lines = content.splitlines()
             insert_index = None
 
             for i, line in enumerate(lines):
@@ -2196,32 +2281,45 @@ def script_13():
                     for j in range(i + 1, len(lines)):
                         if lines[j].strip() == "":
                             insert_index = j
+                            print(f"  📍 找到插入位置: 第 {j+1} 行 (空行)")
                             break
                     break
 
             if insert_index is not None:
-                lines.insert(insert_index, '    build.archive("scripts", "all")')
-                lines.insert(insert_index + 1, '    build.classify("game/tl/schinese/**", "scripts")')
-                with open(new_path, "w", encoding="utf-8") as f:
-                    f.write("\n".join(lines))
-                print("    已在空行插入 build.archive 与 build.classify 语句\n")
+                # 在空行插入 build.archive 与 build.classify 语句
+                lines.insert(insert_index, '    build.archive("scripts", "all")\n')
+                lines.insert(insert_index + 1, '    build.classify("game/tl/schinese/**", "scripts")\n')
+                
+                try:
+                    with open(rpy_path, "w", encoding="utf-8") as f:
+                        f.writelines(lines)
+                    print(f"  ✅ 成功插入 build.archive 和 build.classify 配置")
+                    print(f"  📝 插入内容:")
+                    print(f"      build.archive(\"scripts\", \"all\")")
+                    print(f"      build.classify(\"game/tl/schinese/**\", \"scripts\")")
+                except Exception as e:
+                    print(f"  ❌ 写入文件失败: {e}")
             else:
-                print("    未找到插入位置，跳过。\n")
+                print("  ⚠️  未找到合适的插入位置，跳过")
 
+            print()
 
     # === 总结 ===
-    print("=== 执行结果汇总 ===")
+    print("=" * 50)
+    print("执行结果汇总:")
+    print("=" * 50)
+    
     if found_archive:
-        print("✔ 已根据 build.archive 定位并修改文件。")
+        print("✅ 已根据 build.archive 定位并修改文件")
     elif found_classify:
-        print("✔ 未找到 build.archive，但已根据 build.classify 定位并修改文件。")
+        print("✅ 未找到 build.archive，但已根据 build.classify 定位并修改文件")
     else:
-        print("✖ 未在任何文件中发现匹配规则，未执行修改。")
+        print("❌ 未在任何文件中发现匹配规则，未执行修改")
+    
+    print(f"扫描文件总数: {len(rpy_files)}")
+    print("=" * 50)
 
-    input("\n执行完毕，按回车键关闭窗口...")
-
-    # 保持执行面板不关闭 (需要用户手动关闭)
-    input("按回车键返回主菜单...")
+    input("\n执行完毕，按回车键返回主菜单...")
 
 def script_14():
     """14.提取额外额外文本3.6.py - 原封不动"""
@@ -2244,7 +2342,7 @@ def script_14():
     POOL_D = PROJECT_ROOT / "记忆池D.txt"
     POOL_E = PROJECT_ROOT / "记忆池E.txt"
     NAME_DELE = PROJECT_ROOT / "NameDele.txt"
-    TRANSLATE_RPY = PROJECT_ROOT / "translate.rpy"
+    TRANSLATE_RPY = PROJECT_ROOT / "translate01.rpy"
 
     # 目标搜索目录
     GAME_DIR = PROJECT_ROOT / "game"
@@ -2473,7 +2571,7 @@ def script_14():
                                 string = etx_unescape_string(match.group(2))
                                 if string: text_data.append((string, relative_path, line_num))
                     
-                    if re.search(r'^\s*\$\s*renpy\.notify\s*\(', line):
+                    if re.search(r"\brenpy\.notify\s*\(", line):
                         for match in re.finditer(r'(["\'])((?:\\\1|.)*?)\1', line):
                             if not re.search(r'_\s*\(\s*$', line[:match.start()].rstrip()):
                                 string = etx_unescape_string(match.group(2))
@@ -2841,7 +2939,7 @@ def script_15():
     POOL_D = PROJECT_ROOT / "记忆池D.txt"
     POOL_E = PROJECT_ROOT / "记忆池E.txt"
     NAME_DELE = PROJECT_ROOT / "NameDele.txt"
-    TRANSLATE_RPY = PROJECT_ROOT / "translate.rpy"
+    TRANSLATE_RPY = PROJECT_ROOT / "translate01.rpy"
 
     # 目标搜索目录
     GAME_DIR = PROJECT_ROOT / "game"
@@ -3811,7 +3909,7 @@ def main():
     # 第二步：主循环
     while True:
         show_main_menu()
-        choice = input("请选择功能 (00-15): ").strip()
+        choice = input("请选择功能 (00-18): ").strip()
         
         if choice == "00":
             print("退出脚本")
