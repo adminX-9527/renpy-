@@ -5,38 +5,127 @@ import subprocess
 import importlib
 import importlib.util
 from pathlib import Path
+import tkinter as tk
+from tkinter import filedialog
+
+# ============================ 全局变量 ============================
+ROOT_DIR = ""  # 游戏根目录
+TRANSLATION_DIR = "schinese"  # 翻译文件夹名称
 
 # ============================ 通用函数 ============================
 def get_root_dir():
     """获取根目录，兼容脚本和exe两种运行方式"""
     if getattr(sys, 'frozen', False):
-        # 打包后的exe
         return os.path.dirname(sys.executable)
     else:
-        # 脚本模式
         return os.path.dirname(os.path.abspath(__file__))
 
-# 设置根目录
-ROOT_DIR = get_root_dir()
+def select_game_root():
+    """选择游戏根目录"""
+    print("正在打开文件夹选择对话框...")
+    root = tk.Tk()
+    root.withdraw()
+    
+    selected_dir = filedialog.askdirectory(title="请选择游戏根目录")
+    root.destroy()
+    
+    if selected_dir:
+        global ROOT_DIR
+        ROOT_DIR = selected_dir
+        print(f"✓ 已选择游戏根目录: {ROOT_DIR}")
+        return True
+    else:
+        print("✗ 未选择目录，使用默认目录")
+        return False
 
-# ============================ 脚本导入区域 ============================
+def select_translation_dir():
+    """选择翻译文件夹"""
+    print("\n请选择翻译文件夹：")
+    print("1: schinese")
+    print("2: chinese") 
+    print("3: 自定义")
+    
+    while True:
+        choice = input("请输入选择 (1/2/3): ").strip()
+        if choice == "1":
+            return "schinese"
+        elif choice == "2":
+            return "chinese"
+        elif choice == "3":
+            custom_dir = input("请输入自定义翻译文件夹名称: ").strip()
+            if custom_dir:
+                return custom_dir
+            else:
+                print("自定义翻译文件夹不能为空，请重新输入")
+        else:
+            print("无效选择，请重新输入")
 
-# ---------------------------- 功能区一 ----------------------------
+def get_tl_path():
+    """获取翻译文件夹完整路径"""
+    if not ROOT_DIR:
+        return None
+    return os.path.join(ROOT_DIR, "game", "tl", TRANSLATION_DIR)
+
+def ensure_root_dir():
+    """确保游戏根目录已设置"""
+    global ROOT_DIR
+    if not ROOT_DIR:
+        ROOT_DIR = get_root_dir()
+        print(f"使用默认游戏根目录: {ROOT_DIR}")
+
+def ensure_translation_dir():
+    """确保翻译文件夹路径存在"""
+    tl_path = get_tl_path()
+    if tl_path and not os.path.exists(tl_path):
+        print(f"警告：翻译文件夹不存在: {tl_path}")
+        return False
+    return True
+
+def clear_screen():
+    """清屏函数"""
+    import os
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def wait_for_return():
+    """等待用户按回车键"""
+    input("按回车键返回主菜单...")
+
+# ============================ 功能区一函数 ============================
+
+def script_00():
+    """00.选择游戏根目录"""
+    print("=== 执行: 00.选择游戏根目录 ===")
+    print("按enter选择游戏根目录，按Esc键退出脚本 (enter/esc): ")
+    
+    try:
+        import msvcrt
+        key = msvcrt.getch().decode('utf-8').lower()
+    except:
+        key = input().strip().lower()
+    
+    if key in ('\r', '\n', '', 'enter'):
+        if select_game_root():
+            global TRANSLATION_DIR
+            TRANSLATION_DIR = select_translation_dir()
+            print(f"✓ 已选择翻译文件夹: {TRANSLATION_DIR}")
+            print("游戏根目录和翻译文件夹选择成功！")
+        else:
+            print("游戏根目录选择取消。")
+    elif key in ('\x1b', 'esc'):
+        print("退出脚本")
+        sys.exit()
+    else:
+        print("无效输入，返回主菜单。")
+    
+    wait_for_return()
+
 def script_01():
-    """01.删除 rpyc - 原封不动"""
+    """01.删除 rpyc"""
     print("=== 执行: 01.删除 rpyc ===")
+    ensure_root_dir()
     
     import os
-
-    # --------------------------
-    # 1. 脚本所在目录即为游戏根目录
-    # --------------------------
-    root_dir = ROOT_DIR
-    game_dir = os.path.join(root_dir, "game")
-
-    # --------------------------
-    # 2. 遍历找到 game 目录下（包括子文件夹）的全部 rpyc 文件
-    # --------------------------
+    game_dir = os.path.join(ROOT_DIR, "game")
     rpyc_files = []
 
     for dirpath, dirnames, filenames in os.walk(game_dir):
@@ -44,9 +133,6 @@ def script_01():
             if file.endswith(".rpyc"):
                 rpyc_files.append(os.path.join(dirpath, file))
 
-    # --------------------------
-    # 3. 删除全部找到的 rpyc 文件
-    # --------------------------
     if rpyc_files:
         print("开始删除 rpyc 文件：\n")
         for file_path in rpyc_files:
@@ -58,38 +144,30 @@ def script_01():
     else:
         print("未找到任何 rpyc 文件。")
 
-    # --------------------------
-    # 4. 保持执行面板不关闭
-    # --------------------------
     print("\n全部操作完成。")
-    input("请按回车键返回主菜单...")
+    wait_for_return()
 
 def script_02():
-    """02.生成替换规则 - 修改版：使用<<占位_数字>>格式"""
+    """02.生成替换规则"""
     print("=== 执行: 02.生成替换规则 ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
     
     import os
     import re
 
-    # -------------------- 配置 --------------------
-    # 游戏根目录（脚本所在目录即为游戏根目录）
-    ROOT_DIR_LOCAL = ROOT_DIR
+    root_dir_local = ROOT_DIR
+    MEMORY_A_PATH = os.path.join(root_dir_local, "记忆池A.txt")
+    MEMORY_B_PATH = os.path.join(root_dir_local, "记忆池B.txt")
+    RESULT_PATH = os.path.join(root_dir_local, "result.txt")
 
-    # 输出文件路径
-    MEMORY_A_PATH = os.path.join(ROOT_DIR_LOCAL, "记忆池A.txt")
-    MEMORY_B_PATH = os.path.join(ROOT_DIR_LOCAL, "记忆池B.txt")
-    RESULT_PATH = os.path.join(ROOT_DIR_LOCAL, "result.txt")
-
-    # 替换为 <<占位_数字>> 格式
     def generate_placeholder(index):
-        """生成占位符格式：<<占位_数字>>"""
         return f"<<占位_{index}>>"
 
-    # -------------------- 步骤 1：遍历 rpy 文件并提取文本 --------------------
-    tl_dir = os.path.join(ROOT_DIR_LOCAL, "game", "tl", "schinese")
-    # 正则：匹配双引号内的任意内容，支持转义引号
+    tl_dir = get_tl_path()
     pattern = r'"((?:\\.|[^"\\])*)"'
-
     memory_a_lines = []
 
     print("开始遍历 rpy 文件并提取引号内字符串...")
@@ -99,24 +177,19 @@ def script_02():
             if file.endswith(".rpy"):
                 file_count += 1
                 file_path = os.path.join(root, file)
-                # 使用 errors='ignore' 以避免因部分文件编码问题中断
                 with open(file_path, "r", encoding="utf-8", errors='ignore') as f:
                     content = f.read()
                     matches = re.findall(pattern, content)
                     memory_a_lines.extend(matches)
 
-    # 写入记忆池A
     with open(MEMORY_A_PATH, "w", encoding="utf-8") as f:
         for line in memory_a_lines:
             f.write(line + "\n")
     print(f"记忆池A生成完成，{len(memory_a_lines)}条记录")
 
-    # -------------------- 步骤 2/3：从记忆池A中提取非嵌套的 { } 与单对 [ ] 写入记忆池B --------------------
-    # 规则：包含括号本身；提取非嵌套大括号 { ... }；提取单对中括号 [ ... ]，排除 [[ ... ]]（双中括号）
     memory_b_set = set()
     for line in memory_a_lines:
         curly_matches = re.findall(r"\{[^{}]*\}", line)
-        # 匹配单对中括号，使用负向断言排除 [[...]]
         square_matches = re.findall(r"(?<!\[)\[[^\[\]]*\](?!\])", line)
         for m in curly_matches + square_matches:
             memory_b_set.add(m)
@@ -125,11 +198,9 @@ def script_02():
     with open(MEMORY_B_PATH, "w", encoding="utf-8") as f:
         for item in memory_b_list:
             f.write(item + "\n")
-    print(f"记忆池B生成完成，{len(memory_b_list)} 条记录（共扫描 {file_count} 个 rpy 文件，提取到 {len(memory_a_lines)} 条引号内容）")
+    print(f"记忆池B生成完成，{len(memory_b_list)} 条记录")
 
-    # -------------------- 步骤 4：记忆池C 与 占位符配对写入 result.txt --------------------
     result_lines = []
-    
     for index, item in enumerate(memory_b_list, 1):
         placeholder = generate_placeholder(index)
         result_lines.append(f"{item}   {placeholder}")
@@ -139,7 +210,6 @@ def script_02():
             f.write(line + "\n")
     print(f"result.txt生成完成，共{len(result_lines)}条配对记录")
     
-    # -------------------- 自动删除记忆池A 与 记忆池B --------------------
     try:
         if os.path.exists(MEMORY_A_PATH):
             os.remove(MEMORY_A_PATH)
@@ -150,41 +220,36 @@ def script_02():
         print(f"删除临时文件时出错：{e}")
 
     print("执行完成，脚本不会自动关闭，请手动关闭。")
-    input("按回车键返回主菜单...")
+    wait_for_return()
 
 def script_03():
-    """03.生成正反替换表 - 原封不动"""
+    """03.生成正反替换表"""
     print("=== 执行: 03.生成正反替换表 ===")
+    ensure_root_dir()
     
     import openpyxl
     import re
     import os
 
-    # 最终输出文件名
-    OUTPUT_FILENAME_POSITIVE = "result正.xlsx"
-    OUTPUT_FILENAME_NEGATIVE = "result反.xlsx"
-    INPUT_FILENAME = "result.txt"
+    root_dir_local = ROOT_DIR
+    OUTPUT_FILENAME_POSITIVE = os.path.join(root_dir_local, "result正.xlsx")
+    OUTPUT_FILENAME_NEGATIVE = os.path.join(root_dir_local, "result反.xlsx")
+    INPUT_FILENAME = os.path.join(root_dir_local, "result.txt")
 
     def write_data_to_excel(filename, data_list, column_order, title="占位符数据"):
-        """
-        将解析后的数据写入指定的 Excel 文件，并允许自定义列的顺序。
-        """
         try:
             print(f"正在写入文件: {filename} ...")
             workbook = openpyxl.Workbook()
             sheet = workbook.active
             sheet.title = title
 
-            # 设置列宽
             sheet.column_dimensions['A'].width = 40
             sheet.column_dimensions['B'].width = 40
 
-            # 写入数据
             for row_index, (label, placeholder) in enumerate(data_list, 1):
                 sheet.cell(row=row_index, column=1, value=(label, placeholder)[column_order[0]])
                 sheet.cell(row=row_index, column=2, value=(label, placeholder)[column_order[1]])
 
-            # 保存文件
             workbook.save(filename)
             print(f"✅ 写入完成: {filename}")
             return True
@@ -192,32 +257,24 @@ def script_03():
             print(f"❌ 写入文件 {filename} 失败: {e}")
             return False
 
-
     def convert_txt_to_excel_dual(input_filename=INPUT_FILENAME):
-        """
-        读取 result.txt，解析内容，并生成 result正.xlsx 和 result反.xlsx。
-        """
         print("="*50)
         print("开始 Excel 转换流程...")
         print("="*50)
 
-        # 1. 读取文件
-        print(f"\n步骤1: 读取文件: {input_filename}")
         try:
             with open(input_filename, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             print(f"✅ 成功读取 {len(lines)} 行内容")
         except FileNotFoundError:
             print(f"❌ 错误: 找不到文件 {input_filename}。")
-            input("按回车键返回主菜单...")
+            wait_for_return()
             return
         except Exception as e:
             print(f"❌ 读取文件时发生错误: {e}")
-            input("按回车键返回主菜单...")
+            wait_for_return()
             return
 
-        # 2. 解析数据
-        print("\n步骤2: 解析内容为 [内容] 和 Emoji 对")
         parsed_data = []
         pattern = re.compile(r'^\s*(.+?)\s+([^\s]+)\s*$', re.UNICODE)
 
@@ -236,15 +293,12 @@ def script_03():
 
         if not parsed_data:
             print("❌ 未解析到任何有效数据，程序终止。")
-            input("按回车键返回主菜单...")
+            wait_for_return()
             return
 
         print(f"✅ 数据解析完成，共 {len(parsed_data)} 条有效记录。")
 
-        # 3. 生成 Excel 文件
         print("\n步骤3: 生成 Excel 文件")
-
-        # 3.1 result正.xlsx (正向: 左列 [内容], 右列 Emoji)
         print("\n生成 result正.xlsx (正向)")
         success_positive = write_data_to_excel(
             OUTPUT_FILENAME_POSITIVE,
@@ -253,7 +307,6 @@ def script_03():
             title="正向对照"
         )
 
-        # 3.2 result反.xlsx (反向: 左列 Emoji, 右列 [内容])
         print("\n生成 result反.xlsx (反向)")
         success_negative = write_data_to_excel(
             OUTPUT_FILENAME_NEGATIVE,
@@ -271,29 +324,23 @@ def script_03():
         print(f"反向文件: {os.path.abspath(OUTPUT_FILENAME_NEGATIVE)}")
         print("="*50)
 
-        # 4. 手动关闭脚本
-        input("脚本执行完毕，请按回车键返回主菜单...")
-
+        wait_for_return()
 
     convert_txt_to_excel_dual()
 
 def script_04():
-    """04.提取人名2.1 - 修改版"""
+    """04.提取人名2.1"""
     print("=== 执行: 04.提取人名2.1 ===")
-    
-def script_04():
-    """04.提取人名2.0 - 修改版"""
-    print("=== 执行: 04.提取人名2.0 ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
     
     import os
     import re
     from pathlib import Path
 
-    # --- 常量定义 ---
-    # 1：脚本所在目录即为游戏根目录
     GAME_ROOT = Path(ROOT_DIR)
-
-    # 2：在游戏根目录生成记忆池文件和辅助文件
     POOL_A = GAME_ROOT / "记忆池A.txt"
     POOL_B = GAME_ROOT / "记忆池B.txt"
     POOL_C = GAME_ROOT / "记忆池C.txt"
@@ -302,40 +349,27 @@ def script_04():
     NAME_DELE = GAME_ROOT / "NameDele.txt"
     NAME_TXT = GAME_ROOT / "name.txt"
     NAME_RPY = GAME_ROOT / "name.rpy"
-
-    # 定义符A
     DEFINER_A = "\n----------------截断---------------\n"
 
-    # 日志输出函数
     def log(message):
         print(f"[LOG] {message}")
 
-    # --- 核心逻辑函数 ---
-
     def step_2():
-        """步骤2：生成文件"""
         log("步骤2: 检查/创建工作目录和文件...")
-        
-        # 在游戏根目录生成文件
         for f in [POOL_A, POOL_B, POOL_C, POOL_D, POOL_E, NAME_DELE, NAME_TXT, NAME_RPY]:
             try:
                 f.touch(exist_ok=True)
-                # 清空文件内容
                 with open(f, "w", encoding="utf-8") as file:
                     file.write("")
                 log(f"  - 文件 {f.name} 确保存在并已清空。")
             except Exception as e:
                 log(f"  - 错误: 无法创建或访问文件 {f.name}: {e}")
                 return False
-
-        log("  - 定义符A 已定义。")
         log("步骤2 完成。")
         return True
 
     def step_3():
-        """步骤3：遍历读取game目录内的rpy文件并提取角色名"""
         log("步骤3: 遍历game目录并提取角色名到记忆池A...")
-        
         game_dir = GAME_ROOT / "game"
         tl_dir = game_dir / "tl"
         
@@ -344,14 +378,9 @@ def script_04():
             return False
             
         all_names = []
-        
-        # 查找game及其子文件夹内的全部rpy文件
         rpy_files = [p for p in game_dir.rglob("*.rpy")]
-        
-        # 排除game/tl内的rpy文件
         valid_rpy_files = [p for p in rpy_files if not str(p).startswith(str(tl_dir))]
 
-        # 定义正则表达式
         pattern = re.compile(
             r'''
             ^\s*                                   # 行首可有空格
@@ -376,7 +405,6 @@ def script_04():
                     matches = pattern.findall(content)
                     if matches:
                         for match in matches:
-                            # match[0]是变量名，match[1]是直接字符串，match[2]是Character中的名字
                             name = match[1] if match[1] else match[2]
                             if name and name.strip():
                                 all_names.append(name.strip())
@@ -386,7 +414,6 @@ def script_04():
             except Exception as e:
                 log(f"  - 错误: 读取文件 {rpy_file.name} 发生错误: {e}")
                 
-        # 写入记忆池A
         try:
             with open(POOL_A, "w", encoding="utf-8") as f:
                 for name in all_names:
@@ -400,9 +427,7 @@ def script_04():
         return True
 
     def step_4():
-        """步骤4：处理记忆池A内容"""
         log("步骤4: 处理记忆池A内容...")
-        
         try:
             with open(POOL_A, "r", encoding="utf-8") as f:
                 lines_A = [l.strip() for l in f.readlines()]
@@ -410,24 +435,18 @@ def script_04():
             log("  - 错误: 记忆池A.txt未找到。")
             return False
 
-        # 去重处理
         unique_lines = list(set([line for line in lines_A if line]))
         log(f"  - 记忆池A去重后剩余 {len(unique_lines)} 个非空行。")
 
-        # 用于存放将被保留在记忆池A中的行
         lines_to_keep_in_A = unique_lines.copy()
-
-        # 剪切开头不是字母的行
         non_alpha_start = [line for line in lines_to_keep_in_A if not re.match(r"^[a-zA-Z]", line)]
         lines_to_keep_in_A = [line for line in lines_to_keep_in_A if re.match(r"^[a-zA-Z]", line)]
         log(f"  - 剪切 {len(non_alpha_start)} 行(开头不是字母)到NameDele.txt。")
 
-        # 再次剪切首字母不是大写的行
         non_upper_start = [line for line in lines_to_keep_in_A if not re.match(r"^[A-Z]", line)]
         lines_to_keep_in_A = [line for line in lines_to_keep_in_A if re.match(r"^[A-Z]", line)]
         log(f"  - 再次剪切 {len(non_upper_start)} 行(首字母不是大写)到NameDele.txt。")
 
-        # 写入NameDele
         deleted_lines = non_alpha_start + non_upper_start
         try:
             with open(NAME_DELE, "a", encoding="utf-8") as f:
@@ -438,7 +457,6 @@ def script_04():
         except Exception as e:
             log(f"  - 错误: 写入NameDele.txt失败: {e}")
 
-        # 将保留的行写回记忆池A
         try:
             with open(POOL_A, "w", encoding="utf-8") as f:
                 for line in lines_to_keep_in_A:
@@ -452,9 +470,7 @@ def script_04():
         return True
 
     def step_5():
-        """步骤5：复制记忆池A到记忆池B"""
         log("步骤5: 复制记忆池A内容到记忆池B...")
-        
         try:
             with open(POOL_A, "r", encoding="utf-8") as a:
                 lines_A = [l.strip() for l in a.readlines() if l.strip()]
@@ -475,9 +491,7 @@ def script_04():
         return True
 
     def step_6():
-        """步骤6：过滤记忆池B内容"""
         log("步骤6: 过滤记忆池B内容...")
-        
         try:
             with open(POOL_B, "r", encoding="utf-8") as f:
                 lines_B = [l.strip() for l in f.readlines() if l.strip()]
@@ -485,9 +499,7 @@ def script_04():
             log("  - 错误: 记忆池B.txt未找到。")
             return False
 
-        # 规则: [\(\)\{\}\[\]\d\\\/#!]
         filter_pattern = re.compile(r"[\(\)\{\}\[\]\d\\\/#!]")
-        
         to_namedele = []
         to_name_txt_and_C = []
         
@@ -497,7 +509,6 @@ def script_04():
             else:
                 to_name_txt_and_C.append(line)
 
-        # 写入NameDele
         try:
             with open(NAME_DELE, "a", encoding="utf-8") as f:
                 for line in to_namedele:
@@ -507,7 +518,6 @@ def script_04():
         except Exception as e:
             log(f"  - 错误: 写入NameDele.txt失败: {e}")
             
-        # 写入name.txt与记忆池C
         try:
             with open(NAME_TXT, "w", encoding="utf-8") as f_name, open(POOL_C, "w", encoding="utf-8") as f_c:
                 for line in to_name_txt_and_C:
@@ -522,21 +532,15 @@ def script_04():
         return True
 
     def step_7():
-        """步骤7：提取翻译文件内容到记忆池D"""
-        log("步骤7: 遍历tl/schinese目录提取字符串到记忆池D...")
-        
-        schinese_dir = GAME_ROOT / "game" / "tl" / "schinese"
+        log("步骤7: 遍历tl/翻译文件夹目录提取字符串到记忆池D...")
+        schinese_dir = GAME_ROOT / "game" / "tl" / TRANSLATION_DIR
         
         if not schinese_dir.is_dir():
-            log(f"  - 错误: 缺少'game/tl/schinese'文件夹。")
+            log(f"  - 错误: 缺少'game/tl/{TRANSLATION_DIR}'文件夹。")
             return False
             
         all_strings = set()
-
-        # 查找schinese及其子文件夹内的全部rpy文件
         rpy_files = schinese_dir.rglob("*.rpy")
-        
-        # 严格使用规则: "((?:\\.|[^"\\])*)" 提取内容
         string_pattern = re.compile(r'"((?:\\.|[^"\\])*)"')
 
         for rpy_file in rpy_files:
@@ -554,7 +558,6 @@ def script_04():
             except Exception as e:
                 log(f"  - 错误: 读取文件 {rpy_file.name} 发生错误: {e}")
                 
-        # 写入记忆池D
         all_strings_list = list(all_strings)
         try:
             with open(POOL_D, "w", encoding="utf-8") as f:
@@ -569,9 +572,7 @@ def script_04():
         return True
 
     def step_8():
-        """步骤8：匹配记忆池C和记忆池D"""
         log("步骤8: 匹配记忆池C和记忆池D...")
-        
         try:
             with open(POOL_C, "r", encoding="utf-8") as a, open(POOL_D, "r", encoding="utf-8") as b:
                 lines_C = [l.strip() for l in a.readlines() if l.strip()]
@@ -587,10 +588,10 @@ def script_04():
             with open(POOL_E, "w", encoding="utf-8") as e, open(NAME_DELE, "a", encoding="utf-8") as dele:
                 for line in lines_C:
                     if line in lines_D:
-                        dele.write(line + "\n\n")  # 匹配内容写入NameDele.txt并空行
+                        dele.write(line + "\n\n")
                         matched_count += 1
                     else:
-                        e.write(line + "\n")  # 不能匹配的内容写入记忆池E
+                        e.write(line + "\n")
                         unmatched_count += 1
                         
             log(f"  - 匹配完成：匹配到 {matched_count} 条，未匹配 {unmatched_count} 条。")
@@ -605,9 +606,7 @@ def script_04():
         return True
 
     def step_9():
-        """步骤9：生成name.rpy并清理"""
         log("步骤9: 生成name.rpy文件...")
-        
         try:
             with open(POOL_E, "r", encoding="utf-8") as f:
                 lines_E = [l.strip() for l in f.readlines() if l.strip()]
@@ -618,14 +617,12 @@ def script_04():
         if not lines_E:
             log("  - 记忆池E.txt内容为空，name.rpy不会生成内容。")
             
-        # 生成name.rpy内容
-        rpy_content = ['translate schinese strings:']
+        rpy_content = [f'translate {TRANSLATION_DIR} strings:']
         for line in lines_E:
             rpy_content.append(f'    old "{line}"')
             rpy_content.append(f'    new ""')
-            rpy_content.append("")  # 插入空行
+            rpy_content.append("")
 
-        # 写入name.rpy
         try:
             with open(NAME_RPY, "w", encoding="utf-8") as f:
                 f.write("\n".join(rpy_content).strip() + "\n")
@@ -634,7 +631,6 @@ def script_04():
             log(f"  - 错误: 写入name.rpy失败: {e}")
             return False
             
-        # 删除记忆池文件
         log("步骤9: 删除临时记忆池文件...")
         pools_to_delete = [POOL_A, POOL_B, POOL_C, POOL_D, POOL_E]
         deleted_count = 0
@@ -652,14 +648,12 @@ def script_04():
         log("步骤9 完成。")
         return True
 
-    # --- 主执行逻辑 ---
     def main():
         print("=" * 50)
         print("           Ren'Py 角色名提取工具")
         print("=" * 50)
         
         try:
-            # 按顺序执行所有步骤
             if not step_2(): return
             if not step_3(): return
             if not step_4(): return
@@ -676,14 +670,14 @@ def script_04():
         print("所有步骤执行完毕。")
         print("=" * 50)
 
-        # 执行面板不会自动消失，需要手动关闭
-        input("请按回车键返回主菜单...")
+        wait_for_return()
 
     main()
 
 def script_05():
-    """05.生成人名表（rpy转换xlsx） - 原封不动"""
+    """05.生成人名表（rpy转换xlsx）"""
     print("=== 执行: 05.生成人名表（rpy转换xlsx） ===")
+    ensure_root_dir()
     
     import os
     import re
@@ -692,7 +686,6 @@ def script_05():
     def main():
         print("=== 游戏文本提取脚本启动 ===\n")
 
-        # 1️⃣ 确定路径
         root_dir = ROOT_DIR
         print(f"游戏根目录: {root_dir}")
 
@@ -701,29 +694,25 @@ def script_05():
 
         if not os.path.exists(rpy_path):
             print(f"❌ 找不到文件: {rpy_path}")
-            input("\n按回车键返回主菜单...")
+            wait_for_return()
             return
 
         print(f"找到文件: {rpy_path}")
 
-        # 2️⃣ 读取 rpy 文件内容
         with open(rpy_path, "r", encoding="utf-8") as f:
             content = f.read()
         print("✅ 文件读取完成")
 
-        # 3️⃣ 提取 old / new 内容
         old_texts = re.findall(r'old\s+"([^"]+)"', content)
         new_texts = re.findall(r'new\s+"([^"]+)"', content)
 
         print(f"提取到 old 文本数: {len(old_texts)}")
         print(f"提取到 new 文本数: {len(new_texts)}")
 
-        # 对齐长度
         max_len = max(len(old_texts), len(new_texts))
         old_texts += [""] * (max_len - len(old_texts))
         new_texts += [""] * (max_len - len(new_texts))
 
-        # 4️⃣ 写入 Excel 文件
         wb = Workbook()
         ws = wb.active
         ws.title = "name提取结果"
@@ -735,15 +724,18 @@ def script_05():
         wb.save(xlsx_path)
         print(f"✅ 数据已写入文件: {xlsx_path}")
 
-        # 5️⃣ 手动关闭
         print("\n=== 任务完成 ===")
-        input("按回车键返回主菜单...")
+        wait_for_return()
 
     main()
 
 def script_06():
-    """06.提取额外文本3.0 - 原封不动"""
+    """06.提取额外文本3.0"""
     print("=== 执行: 06.提取额外文本3.0 ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
     
     import os
     import re
@@ -751,11 +743,7 @@ def script_06():
     from pathlib import Path
     import sys
 
-    # --- 配置 ---
-    # 脚本根目录即为游戏根目录
     PROJECT_ROOT = Path(ROOT_DIR)
-
-    # 记忆池文件名
     POOL_A = PROJECT_ROOT / "记忆池A.txt"
     POOL_B = PROJECT_ROOT / "记忆池B.txt"
     POOL_C = PROJECT_ROOT / "记忆池C.txt"
@@ -763,19 +751,13 @@ def script_06():
     POOL_E = PROJECT_ROOT / "记忆池E.txt"
     NAME_DELE = PROJECT_ROOT / "NameDele.txt"
     TRANSLATE_RPY = PROJECT_ROOT / "translate.rpy"
-
-    # 目标搜索目录
     GAME_DIR = PROJECT_ROOT / "game"
-    TL_S_CHINESE_DIR = PROJECT_ROOT / "game" / "tl" / "schinese"
+    TL_S_CHINESE_DIR = PROJECT_ROOT / "game" / "tl" / TRANSLATION_DIR
 
-    # --- 从功能模块1导入的提取规则 ---
     def etx_unescape_string(s):
-        """处理字符串中的转义序列"""
-        # 已移除转义处理以保持原文不变
         return s
 
     def etx_is_valid_name(name):
-        """检查名称是否有效，过滤掉不需要的条目（人名专用过滤规则）。"""
         FILE_EXTENSIONS = (
             '.webp', '.webm', '.ttf', '.otf', '.jpg', '.png', '.gif', '.jpeg', 
             '.avif', '.mp3', '.wav', '.wmv', '.mp4', '.psd', '.ogg'
@@ -794,7 +776,6 @@ def script_06():
         return True
 
     def etx_extract_character_names(filename, script_dir):
-        """从单个 .rpy 文件中提取角色名称，并返回 (名称, 路径, 行号) 的元组列表"""
         pattern_char = re.compile(
             r'^define\s+\w+\s*=\s*Character\s*\(\s*'
             r'(?:_\s*\()?'
@@ -822,7 +803,6 @@ def script_06():
                     match_char = pattern_char.search(line_stripped)
                     if match_char:
                         name = match_char.group(2).strip()
-                        # 保持原文，不做反斜杠转义处理
                         if name and name not in seen:
                             seen.add(name)
                             names_data.append((name, relative_path, line_num))
@@ -831,7 +811,6 @@ def script_06():
                     match_direct = pattern_direct.search(line_stripped)
                     if match_direct:
                         name = match_direct.group(2).strip()
-                        # 保持原文，不做反斜杠转义处理
                         if name and name not in seen:
                             seen.add(name)
                             names_data.append((name, relative_path, line_num))
@@ -840,12 +819,8 @@ def script_06():
         return names_data
 
     def etx_filter_extracted_strings(string_data):
-        """
-        对提取的字符串数据列表进行过滤，并返回被删除的字符串列表。
-        每个元素是一个元组 (string, path, line)。
-        """
         filtered_list = []
-        deleted_list = [] # 用于存放被删除的字符串文本
+        deleted_list = []
 
         file_extensions = ('.mp3', '.png', '.jpg', '.jpeg', '.ogg', '.wav', '.webp', '.gif', '.avi', '.mp4', '.mov', '.webm', '.flv', '.wmv')
 
@@ -908,7 +883,6 @@ def script_06():
         return filtered_list, deleted_list
 
     def etx_extract_strings_from_rpy(file_path):
-        """从rpy文件中提取字符串及其位置信息(string, path, line)"""
         text_data = []
         variable_data = []
         replace_data = []
@@ -1054,7 +1028,6 @@ def script_06():
         return unique_text, unique_variable, unique_replace
 
     def etx_extract_old_new_translations(file_path):
-        """从翻译文件中提取 old/new 翻译对"""
         old_strings = []
         new_strings = []
         try:
@@ -1072,7 +1045,6 @@ def script_06():
         return old_strings[:min_length], new_strings[:min_length]
 
     def etx_scan_directory_for_rpy(directory, exclude_dirs=None):
-        """扫描目录下的所有.rpy文件"""
         if exclude_dirs is None:
             exclude_dirs = []
         rpy_files = []
@@ -1087,70 +1059,38 @@ def script_06():
             print(f"扫描目录 {directory} 时出错: {e}")
         return rpy_files
 
-    # --- 核心函数：规则1: rpy文件字符串提取 (使用功能模块1的完整规则) ---
     def extract_rpy_strings(file_path):
-        """
-        从 .rpy 文件中提取四类字符串：人名, 文本, 变量, 替换。
-        使用功能模块1的完整提取规则。
-        返回格式：[人名列表, 文本列表, 变量列表, 替换列表]
-        每个列表元素格式：(string, relative_path, line_number)
-        """
-        # 提取角色名
         name_strings = etx_extract_character_names(file_path, PROJECT_ROOT)
-        
-        # 提取其他文本类型
         text_strings, variable_strings, replace_strings = etx_extract_strings_from_rpy(file_path)
-        
-        # 合并所有提取的字符串
         all_strings = name_strings + text_strings + variable_strings + replace_strings
-        
         return [all_strings, text_strings, variable_strings, replace_strings]
 
-    # --- 核心函数：规则4: 统一字符串过滤 (使用功能模块1的筛选规则) ---
     def shared_filter_strings(strings_with_info):
-        """
-        统一的字符串过滤函数，使用功能模块1的筛选规则。
-        (strings_with_info 格式: [(string, file_path, line_number), ...])
-        """
         print("\n[步骤4] 正在执行统一字符串筛选...")
-        
-        # 使用功能模块1的筛选函数
         filtered_list, deleted_list = etx_filter_extracted_strings(strings_with_info)
-        
         print(f"    筛选完成。原始: {len(strings_with_info)} 条, 过滤后: {len(filtered_list)} 条, 移除: {len(deleted_list)} 条。")
-        
         return filtered_list, deleted_list
 
-    # --- 辅助函数：规则5: 写入记忆池A ---
     def copy_first_column_d_to_a():
-        """
-        读取 记忆池D.txt，将第一列依次写入 记忆池A.txt。
-        第一列保持原样，不做任何修改。
-        """
         print("\n[步骤5] 正在将记忆池D的第一列写入记忆池A...")
         first_column_lines = []
         
-        # 确保文件存在
         if not POOL_D.exists():
             print(f"    !!! 错误：文件 {POOL_D} 不存在，跳过步骤5。")
             return
 
-        # 读取记忆池D
         try:
             with open(POOL_D, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.rstrip("\n")
                     if line.strip() == "":
                         continue
-                    # 按制表符或空格分列，取第一列
-                    # 这里假设 D 文件是 制表符 分隔的 (string, file_path, line_number)
                     first_col = line.split("\t", 1)[0]
                     first_column_lines.append(first_col)
         except Exception as e:
             print(f"    !!! 错误：读取 {POOL_D} 时出错: {e}")
             return
 
-        # 写入记忆池A
         try:
             with open(POOL_A, 'w', encoding='utf-8') as f:
                 for item in first_column_lines:
@@ -1159,26 +1099,22 @@ def script_06():
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_A} 时出错: {e}")
 
-    # --- 主执行流程 ---
     def main():
         print("--- Ren'Py 额外文本提取与翻译辅助脚本 V1.0 (使用功能模块1规则) ---")
         print(f"项目根目录: {PROJECT_ROOT}\n")
 
-        # 步骤 2: 生成文件（如果不存在）并清空内容
         print("[步骤2] 正在创建/清空记忆池文件和辅助文件...")
         for f in [POOL_A, POOL_B, POOL_C, POOL_D, POOL_E, NAME_DELE, TRANSLATE_RPY]:
             try:
                 with open(f, 'w', encoding='utf-8') as fp:
                     if f == TRANSLATE_RPY:
-                        # 步骤 8: 写入 translate.rpy 的起始内容
-                        fp.write('translate schinese strings:\n')
+                        fp.write(f'translate {TRANSLATION_DIR} strings:\n')
                     pass
                 print(f"    已创建/清空: {f.name}")
             except Exception as e:
                 print(f"    !!! 错误：创建/清空文件 {f.name} 失败: {e}")
                 sys.exit(1)
         
-        # 步骤 3: 遍历 game 文件夹并提取内容写入 记忆池C
         print("\n[步骤3] 正在遍历 game 文件夹并提取rpy文件中的字符串写入记忆池C...")
         all_extracted_strings = []
         game_path = PROJECT_ROOT / "game"
@@ -1188,31 +1124,23 @@ def script_06():
             print("    请检查脚本位置是否正确（应在游戏根目录）。")
             return
 
-        # 使用功能模块1的扫描函数
         rpy_files = etx_scan_directory_for_rpy(str(game_path), exclude_dirs=['tl'])
         
         for file_path in rpy_files:
-            # 排除 tl 文件夹内的所有文件
             if 'tl' not in file_path:
                 extracted = extract_rpy_strings(file_path)
-                # extracted[0] 包含所有提取到的字符串信息 [(string, relative_path, line_number)]
                 all_extracted_strings.extend(extracted[0])
 
-        # 去除内部重复并写入 记忆池C
         unique_c_strings = list(dict.fromkeys(all_extracted_strings))
         try:
             with open(POOL_C, 'w', encoding='utf-8') as f:
                 for string, file_path, line_number in unique_c_strings:
-                    # 写入格式: string\tfile_path\tline_number
                     f.write(f"{string}\t{file_path}\t{line_number}\n")
             print(f"    所有提取到的 {len(unique_c_strings)} 条内容已写入 {POOL_C}。")
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_C} 时出错: {e}")
 
-        # 步骤 4: 筛选 记忆池C 的内容，去重后写入 记忆池D
         filtered_d_strings, _ = shared_filter_strings(unique_c_strings)
-        
-        # 再次去重 (基于字符串内容)
         d_content_map = {}
         for string, file_path, line_number in filtered_d_strings:
             if string not in d_content_map:
@@ -1228,24 +1156,20 @@ def script_06():
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_D} 时出错: {e}")
             
-        # 步骤 5: 将 记忆池D 的第一列写入 记忆池A
         copy_first_column_d_to_a()
 
-        # 步骤 6: 遍历 tl/schinese 文件夹提取内容写入 记忆池B
-        print("\n[步骤6] 正在遍历 tl/schinese 文件夹提取字符串写入记忆池B...")
-        tl_schinese_path = PROJECT_ROOT / "game" / "tl" / "schinese"
+        print("\n[步骤6] 正在遍历 tl/翻译文件夹 提取字符串写入记忆池B...")
+        tl_schinese_path = PROJECT_ROOT / "game" / "tl" / TRANSLATION_DIR
         extracted_tl_strings = set()
         
         if not tl_schinese_path.exists():
             print(f"    警告：翻译文件夹不存在: {tl_schinese_path}，记忆池B将为空。")
         else:
-            # 使用功能模块1的翻译提取函数
             tl_rpy_files = etx_scan_directory_for_rpy(str(tl_schinese_path))
             for file_path in tl_rpy_files:
                 try:
                     print(f"    -> 正在读取翻译文件: {Path(file_path).relative_to(PROJECT_ROOT)}")
                     old_strings, new_strings = etx_extract_old_new_translations(file_path)
-                    # 将提取到的所有字符串添加到集合中
                     extracted_tl_strings.update(old_strings)
                     extracted_tl_strings.update(new_strings)
                 except Exception as e:
@@ -1255,11 +1179,10 @@ def script_06():
             with open(POOL_B, 'w', encoding='utf-8') as f:
                 for item in extracted_tl_strings:
                     f.write(f"{item}\n")
-            print(f"    已从 tl/schinese 提取 {len(extracted_tl_strings)} 条内容并写入 {POOL_B}。")
+            print(f"    已从 tl/{TRANSLATION_DIR} 提取 {len(extracted_tl_strings)} 条内容并写入 {POOL_B}。")
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_B} 时出错: {e}")
 
-        # 步骤 7: 匹配 记忆池A 和 记忆池B，结果写入 NameDele.txt 和 记忆池E
         print("\n[步骤7] 正在进行记忆池A和B的匹配和分离...")
         try:
             with open(POOL_A, "r", encoding="utf-8") as a:
@@ -1270,7 +1193,6 @@ def script_06():
         
         try:
             with open(POOL_B, "r", encoding="utf-8") as b:
-                # 使用 set 进行快速查找
                 lines_B = set([l.strip() for l in b.readlines() if l.strip()])
         except FileNotFoundError:
             print(f"    警告：文件 {POOL_B} 不存在，所有内容将写入 {POOL_E}。")
@@ -1284,11 +1206,11 @@ def script_06():
             with open(POOL_E, "w", encoding="utf-8") as pool_e, open(NAME_DELE, "a", encoding="utf-8") as dele:
                 for line in lines_A:
                     if line in lines_B:
-                        dele.write(line + "\n\n") # 匹配内容写入 NameDele.txt 并空行
+                        dele.write(line + "\n\n")
                         matched_count += 1
                     else:
                         unmatched_lines.append(line)
-                        pool_e.write(line + "\n") # 不能匹配的内容写入 记忆池E
+                        pool_e.write(line + "\n")
                         unmatched_count += 1
                         
             print(f"    匹配完成：匹配到 {matched_count} 条，未匹配 {unmatched_count} 条。")
@@ -1298,24 +1220,19 @@ def script_06():
         except Exception as e:
             print(f"    !!! 错误：在步骤7中处理文件时出错: {e}")
 
-        # 步骤 9: 遍历 记忆池E 写入 translate.rpy
         print("\n[步骤9] 正在将记忆池E的内容格式化写入 translate.rpy...")
         try:
-            # 再次读取记忆池E (因为上面步骤7已经写入了)
             with open(POOL_E, "r", encoding="utf-8") as f:
                 e_lines = [l.strip() for l in f.readlines() if l.strip()]
                 
             with open(TRANSLATE_RPY, "a", encoding="utf-8") as f:
                 for line in e_lines:
-                    # 格式: old "行内容" \n new ""
-                    # 按用户要求保留原文不变：直接写入提取到的原始文本（不进行任何转义处理）
                     f.write(f'\n    old "{line}"\n    new ""\n')
             
             print(f"    已将 {len(e_lines)} 条内容格式化追加到 {TRANSLATE_RPY}。")
         except Exception as e:
             print(f"    !!! 错误：在步骤9中处理文件时出错: {e}")
 
-        # 步骤 10: 清理文件
         print("\n[步骤10] 正在清理临时文件...")
         files_to_delete = [POOL_A, POOL_B, POOL_C, POOL_D, POOL_E, NAME_DELE]
         deleted_count = 0
@@ -1331,47 +1248,42 @@ def script_06():
         print(f"    共清理了 {deleted_count} 个临时文件。")
         
         print("\n--- 脚本执行完毕 ---")
-        input("请按任意键关闭窗口...") # 确保执行面板不会自动关闭
+        input("请按任意键关闭窗口...")
 
     main()
 
 def script_07():
-    """07.处理name.xlsx文件（简单去重筛选） - 原封不动"""
+    """07.处理name.xlsx文件（简单去重筛选）"""
     print("=== 执行: 07.处理name.xlsx文件（简单去重筛选） ===")
+    ensure_root_dir()
     
     import os
     from openpyxl import load_workbook
 
-    # 1. 获取脚本目录，即游戏根目录
     root_dir = ROOT_DIR
     file_path = os.path.join(root_dir, "name.xlsx")
 
-    # 2. 读取 name.xlsx
     if not os.path.exists(file_path):
         print(f"文件 {file_path} 不存在！")
-        input("按回车键返回主菜单...")
+        wait_for_return()
         return
 
     wb = load_workbook(file_path)
-    ws = wb.active  # 默认操作第一个sheet
+    ws = wb.active
 
-    # 获取第一列数据及行号
     rows = list(ws.iter_rows(min_row=1, max_col=1, values_only=True))
 
-    # 用于标记需要删除的行
     delete_rows = set()
 
     print("原始数据：")
     for idx, row in enumerate(rows, start=1):
         print(f"{idx}: {row[0]}")
 
-    # 3. 删除首字母为数字的行
     for idx, row in enumerate(rows, start=1):
         if row[0] and str(row[0])[0].isdigit():
             delete_rows.add(idx)
             print(f"删除首字母为数字的行 {idx}: {row[0]}")
 
-    # 4. 删除只有一个字母的行
     for idx, row in enumerate(rows, start=1):
         if idx in delete_rows:
             continue
@@ -1379,7 +1291,6 @@ def script_07():
             delete_rows.add(idx)
             print(f"删除只有一个字母的行 {idx}: {row[0]}")
 
-    # 5. 删除重复行，只保留唯一行
     seen = set()
     for idx, row in enumerate(rows, start=1):
         if idx in delete_rows:
@@ -1391,46 +1302,34 @@ def script_07():
         else:
             seen.add(val)
 
-    # 删除行（必须从下往上删除，否则行号会变化）
     for row_idx in sorted(delete_rows, reverse=True):
         ws.delete_rows(row_idx)
 
-    # 保存文件
     wb.save(file_path)
     print("处理完成，已保存。")
 
-    # 保持窗口打开，等待用户手动关闭
-    input("按回车键返回主菜单...")
+    wait_for_return()
 
-# ---------------------------- 功能区二 ----------------------------
+# ============================ 功能区二函数 ============================
+
 def script_08():
-    """08：审查后的术语表转txt - 原封不动"""
+    """08：审查后的术语表转txt"""
     print("=== 执行: 08：审查后的术语表转txt ===")
+    ensure_root_dir()
     
     import openpyxl
     import os
-    import sys
 
     def process_game_data():
-        """
-        识别 'name.xlsx' 的第一列内容，并将其写入 'name.txt'。
-        同时，将执行过程打印到控制台。
-        """
-        # 1: 脚本所在目录即为 游戏根目录
-        # 确定游戏根目录（即脚本当前执行的目录）
         game_root_dir = ROOT_DIR
-        
-        # 构造 Excel 文件和 Text 文件的完整路径
         excel_file_path = os.path.join(game_root_dir, 'name.xlsx')
         text_file_path = os.path.join(game_root_dir, 'name.txt')
         
-        # 打印流程信息
         print("-" * 50)
         print("--- 脚本执行开始 ---")
-        print(f"1. 游戏根目录/当前工作目录: {game_root_dir}")
+        print(f"1. 游戏根目录: {game_root_dir}")
         print(f"2. 正在查找 Excel 文件: {excel_file_path}")
         
-        # 检查 Excel 文件是否存在
         if not os.path.exists(excel_file_path):
             print(f"\n错误：未找到文件 {excel_file_path}。")
             print("请确保 'name.xlsx' 文件存在于游戏根目录下。")
@@ -1438,24 +1337,16 @@ def script_08():
             return
 
         try:
-            # 3: 识别 游戏根目录\name.xlsx 文件
-            # 加载 Excel 工作簿
             workbook = openpyxl.load_workbook(excel_file_path)
-            # 默认选择第一个工作表
             sheet = workbook.active
             
             print("\n3. 成功加载 'name.xlsx' 文件。")
             print("   正在读取第一列（A列）的所有内容...")
             
-            # 提取第一列（A列）的内容
-            # row[0] 是获取该行中第一个单元格的值
             first_column_content = [str(row[0].value) for row in sheet.iter_rows(min_col=1, max_col=1) if row[0].value is not None]
             
-            # 打印读取到的条目总数
             print(f"   共读取到 {len(first_column_content)} 条非空数据。")
             
-            # 2: 在游戏根目录下生成一个 name.txt 文件
-            # 3: 将第一列 全部内容，依次复制写入 name.txt 内
             with open(text_file_path, 'w', encoding='utf-8') as f:
                 for item in first_column_content:
                     f.write(item + '\n')
@@ -1471,15 +1362,16 @@ def script_08():
             print("请检查 'name.xlsx' 文件是否损坏或被其他程序占用。")
             print("-" * 50)
 
-
-    # 4: 我需要看到在执行面板上看到执行的全部流程，执行面板不会自动关闭，需要手动关闭
     process_game_data()
-    # 暂停执行，等待用户按下回车键，以保持执行面板开启
     input("\n流程已全部完成，请按回车键返回主菜单...")
 
 def script_09():
-    """09：生成新的name.rpy - 原封不动"""
+    """09：生成新的name.rpy"""
     print("=== 执行: 09：生成新的name.rpy ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
     
     import os
     import re
@@ -1488,11 +1380,9 @@ def script_09():
     def main():
         print("=== 脚本开始执行 ===")
 
-        # 1：确认当前目录为游戏根目录
         root_dir = ROOT_DIR
         print(f"游戏根目录: {root_dir}")
 
-        # 2：生成记忆池文件和 name.rpy、NameDele.txt
         memory_a = os.path.join(root_dir, "记忆池A.txt")
         memory_b = os.path.join(root_dir, "记忆池B.txt")
         memory_c = os.path.join(root_dir, "记忆池C.txt")
@@ -1509,7 +1399,6 @@ def script_09():
         open(name_dele, "w", encoding="utf-8").close()
         print("记忆池A/B/C、name.rpy、NameDele.txt 已创建。")
 
-        # 3：处理 name.txt
         name_txt = os.path.join(root_dir, "name.txt")
         if not os.path.exists(name_txt):
             print("未找到 name.txt 文件，脚本终止。")
@@ -1521,11 +1410,9 @@ def script_09():
         with open(memory_a, "w", encoding="utf-8") as a, open(name_dele, "a", encoding="utf-8") as dele:
             for line in lines:
                 line = line.strip()
-                # 排除包含 [] 或 {}
                 if "[" in line or "]" in line or "{" in line or "}" in line:
                     dele.write(line + "\n")
                     continue
-                # 排除非字母符号的行
                 if re.search(r"[^A-Za-z\s\-]", line):
                     dele.write(line + "\n")
                     continue
@@ -1534,8 +1421,7 @@ def script_09():
 
         print("已处理 name.txt 并写入 记忆池A 与 NameDele.txt。")
 
-        # 4：提取 game/tl/schinese 目录内所有 .rpy 文件中的字符串
-        target_dir = os.path.join(root_dir, "game", "tl", "schinese")
+        target_dir = get_tl_path()
         rpy_files = []
         for dirpath, _, filenames in os.walk(target_dir):
             for f in filenames:
@@ -1554,7 +1440,6 @@ def script_09():
 
         print(f"共提取 {len(rpy_files)} 个 rpy 文件内容到 记忆池B。")
 
-        # 5：比较 记忆池A 与 记忆池B
         with open(memory_a, "r", encoding="utf-8") as a, open(memory_b, "r", encoding="utf-8") as b:
             lines_a = [l.strip() for l in a.readlines() if l.strip()]
             lines_b = set([l.strip() for l in b.readlines() if l.strip()])
@@ -1562,32 +1447,29 @@ def script_09():
         with open(memory_c, "w", encoding="utf-8") as c, open(name_dele, "a", encoding="utf-8") as dele:
             for line in lines_a:
                 if line in lines_b:
-                    dele.write(line + "\n\n")  # 匹配内容写入 NameDele.txt 并空行
+                    dele.write(line + "\n\n")
                 else:
                     c.write(line + "\n")
 
         print("记忆池A 与 记忆池B 对比完成，记忆池C 已生成。")
 
-        # 6：将记忆池C内容写入 name.rpy
         with open(memory_c, "r", encoding="utf-8") as c:
             lines_c = [l.strip() for l in c.readlines() if l.strip()]
 
         with open(name_rpy, "w", encoding="utf-8") as n:
-            n.write("translate schinese strings:\n")
+            n.write(f"translate {TRANSLATION_DIR} strings:\n")
             for line in lines_c:
                 n.write(f'    old "{line}"\n')
                 n.write('    new ""\n\n')
 
         print("name.rpy 文件已生成。")
 
-        # 7：移动 name.rpy 到 game/tl/schinese 内
         dest_path = os.path.join(target_dir, "name.rpy")
         if os.path.exists(dest_path):
             os.remove(dest_path)
         shutil.move(name_rpy, dest_path)
         print(f"name.rpy 已移动到 {dest_path}")
 
-        # 8：删除记忆池文件（此处已启用删除）
         for f in [memory_a, memory_b, memory_c]:
             try:
                 os.remove(f)
@@ -1596,75 +1478,60 @@ def script_09():
                 print(f"删除 {os.path.basename(f)} 时出错: {e}")
 
         print("=== 脚本执行完毕，窗口不会自动关闭 ===")
-        input("按回车键返回主菜单...")
+        wait_for_return()
 
-    main()        
+    main()
 
-# ---------------------------- 功能区三 ----------------------------
+# ============================ 功能区三函数 ============================
 
 def script_10():
-    """10.插入中文设置模块.py - 重构版"""
+    """10.插入中文设置模块.py"""
     print("=== 执行: 10.插入中文设置模块.py ===")
+    ensure_root_dir()
     
     import os
     
-    # 游戏根目录，脚本所在目录
-    ROOT_DIR_LOCAL = ROOT_DIR
-    GAME_DIR = os.path.join(ROOT_DIR_LOCAL, "game")
+    game_root = ROOT_DIR
+    GAME_DIR = os.path.join(game_root, "game")
     
     def log(msg):
         print(f"[INFO] {msg}")
     
     def read_lines(filepath):
-        """读取文件内容"""
         with open(filepath, "r", encoding="utf-8") as f:
             return f.readlines()
     
     def write_lines(filepath, lines):
-        """写入文件内容"""
         with open(filepath, "w", encoding="utf-8") as f:
             f.writelines(lines)
         log(f"已写入文件: {filepath}, 共 {len(lines)} 行")
     
     def find_radio_vbox_structure(lines):
-        """查找 vbox: 和 style_prefix "radio" 结构"""
         for i, line in enumerate(lines):
-            # 查找 vbox: 行（不考虑缩进）
             if 'vbox:' in line and not line.strip().startswith('#'):
-                # 检查下一行是否有 style_prefix "radio"（4空格缩进）
                 if i + 1 < len(lines) and '    style_prefix "radio"' in lines[i + 1]:
                     log(f"找到 radio vbox 结构，行号: {i}")
                     return i
         return None
     
     def find_vbox_end(lines, start_index):
-        """查找 vbox 代码块的结束位置"""
-        # 获取 vbox 的缩进级别
         vbox_indent = len(lines[start_index]) - len(lines[start_index].lstrip())
         
-        # 从 vbox 开始位置向后查找
         i = start_index + 1
         while i < len(lines):
             current_line = lines[i]
-            # 如果当前行的缩进小于等于 vbox 的缩进，且不是空行，说明 vbox 块结束
             current_indent = len(current_line) - len(current_line.lstrip())
             if current_line.strip() and current_indent <= vbox_indent:
                 return i
             i += 1
         
-        # 如果没找到，返回文件末尾
         return len(lines)
     
     def insert_radio_code(lines, vbox_index, language_option):
-        """插入语言选择代码"""
-        # 获取 vbox 的缩进级别
         vbox_indent = len(lines[vbox_index]) - len(lines[vbox_index].lstrip())
-        
-        # 查找 vbox 代码块的结束位置
         vbox_end_index = find_vbox_end(lines, vbox_index)
         log(f"vbox 代码块结束位置: {vbox_end_index}")
         
-        # 生成语言选择代码
         radio_code = [
             ' ' * vbox_indent + "vbox:\n",
             ' ' * (vbox_indent + 4) + 'style_prefix "radio"\n',
@@ -1673,21 +1540,17 @@ def script_10():
             ' ' * (vbox_indent + 4) + f'textbutton _("中文") action Language("{language_option}")\n'
         ]
         
-        # 在 vbox 结束位置先插入代码，然后插入空行
         for j, code_line in enumerate(radio_code):
             lines.insert(vbox_end_index + j, code_line)
         
-        # 在插入的代码后面添加空行
         lines.insert(vbox_end_index + len(radio_code), "\n")
         
         log(f"在行号 {vbox_end_index} 插入语言选择代码，并在代码后添加空行")
         return lines
     
     def insert_language_define(filepath, language_option):
-        """在 options.rpy 中插入语言定义"""
         lines = read_lines(filepath)
         
-        # 查找第一个以 define 开头的行（没有缩进）
         first_define_index = -1
         for i, line in enumerate(lines):
             stripped_line = line.lstrip()
@@ -1698,11 +1561,9 @@ def script_10():
         
         if first_define_index == -1:
             log("未找到以 define 开头的行，在第一行插入语言定义")
-            # 在第一行插入
             lines.insert(0, f'define config.language = "{language_option}"\n')
             lines.insert(1, "\n")
         else:
-            # 在第一个 define 行下方插入语言定义
             insert_index = first_define_index + 1
             lines.insert(insert_index, f'define config.language = "{language_option}"\n')
             log(f"在第一个 define 行下方插入语言定义，插入位置: {insert_index}")
@@ -1711,13 +1572,11 @@ def script_10():
         log(f"在 options.rpy 中插入 define config.language = '{language_option}'")
     
     def find_rpy_files(exclude_dirs=None):
-        """查找 game 目录下的 rpy 文件（排除指定目录）"""
         if exclude_dirs is None:
             exclude_dirs = ['tl']
         
         rpy_files = []
         for root, dirs, files in os.walk(GAME_DIR):
-            # 排除指定目录
             root_rel = os.path.relpath(root, GAME_DIR)
             if any(excluded in root_rel for excluded in exclude_dirs):
                 continue
@@ -1729,7 +1588,6 @@ def script_10():
         return rpy_files
     
     def select_language_option():
-        """选择语言选项"""
         print("\n请选择语言选项：")
         print("1: schinese")
         print("2: chinese") 
@@ -1753,69 +1611,59 @@ def script_10():
     def main():
         log("脚本开始执行")
         
-        # 1. 选择语言选项
         language_option = select_language_option()
         log(f"选择的语言选项: {language_option}")
         
-        # 2. 查找 screens.rpy 文件
         log("正在查找 screens.rpy 文件...")
         screens_files = [f for f in find_rpy_files() if os.path.basename(f) == 'screens.rpy']
         
         if not screens_files:
             log("未找到 screens.rpy 文件，跳转到 options.rpy 处理")
-            # 跳转到 options.rpy 处理
             process_options_rpy(language_option)
             return
         
-        # 3. 直接处理第一个找到的 screens.rpy 文件
         screens_path = screens_files[0]
         log(f"直接处理 screens.rpy 文件: {screens_path}")
         
-        # 4. 读取并处理 screens.rpy
         lines = read_lines(screens_path)
-        
-        # 5. 查找 radio vbox 结构
         radio_vbox_index = find_radio_vbox_structure(lines)
         
         if radio_vbox_index is not None:
-            # 找到结构，插入语言选择代码
             log("找到 radio vbox 结构，准备插入语言选择代码")
             lines = insert_radio_code(lines, radio_vbox_index, language_option)
             write_lines(screens_path, lines)
             log("成功在 screens.rpy 中插入语言选择代码")
         else:
-            # 未找到结构，处理 options.rpy
             log("未找到 radio vbox 结构，处理 options.rpy")
             process_options_rpy(language_option)
     
     def process_options_rpy(language_option):
-        """处理 options.rpy 文件"""
         log("开始处理 options.rpy 文件")
         
-        # 1. 查找 options.rpy 文件
         options_files = [f for f in find_rpy_files() if os.path.basename(f) == 'options.rpy']
         
         if not options_files:
             log("未找到 options.rpy 文件")
             return
         
-        # 2. 直接处理第一个找到的 options.rpy 文件
         options_path = options_files[0]
         log(f"直接处理 options.rpy 文件: {options_path}")
         
-        # 3. 插入语言定义
         insert_language_define(options_path, language_option)
         log("options.rpy 处理完成")
     
-    # 执行主函数
     main()
     
     log("脚本执行完毕")
-    input("按回车键返回主菜单...") 
+    wait_for_return()
 
 def script_11():
-    """11.生成style字体控制模块2.3.py -修改版 """
+    """11.生成style字体控制模块2.3.py"""
     print("=== 执行: 11.生成style字体控制模块2.3.py ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
     
     import os
     import gzip
@@ -1823,10 +1671,6 @@ def script_11():
     import tkinter as tk
     from tkinter import filedialog
 
-    # ==========================================================
-    # 注意：为满足您的要求，Base64 码已被省略处理。
-    # 实际运行时，必须使用完整的 Base64 字符串替换省略号部分。
-    # ==========================================================
     PACKED_FONTS = {
         "Arial-Unicode-Regular.ttf": (
             """H4sIAJYc7mgAALy......"""
@@ -1836,14 +1680,10 @@ def script_11():
         ),
     }
     
-    # ==========================================================
-
     def select_custom_font():
-        """打开文件选择对话框让用户选择自定义字体"""
         root = tk.Tk()
-        root.withdraw()  # 隐藏主窗口
+        root.withdraw()
         
-        # 设置文件类型过滤器
         filetypes = [
             ("字体文件", "*.ttf *.otf *.ttc"),
             ("TrueType字体", "*.ttf"),
@@ -1859,14 +1699,11 @@ def script_11():
         root.destroy()
         
         if font_path:
-            # 获取字体文件名
             font_filename = os.path.basename(font_path)
-            # 复制字体文件到schinese目录
-            schinese_dir = os.path.join(ROOT_DIR, "game", "tl", "schinese")
-            dest_path = os.path.join(schinese_dir, font_filename)
+            tl_dir = get_tl_path()
+            dest_path = os.path.join(tl_dir, font_filename)
             
             try:
-                # 复制字体文件
                 with open(font_path, "rb") as src_file:
                     with open(dest_path, "wb") as dest_file:
                         dest_file.write(src_file.read())
@@ -1882,27 +1719,24 @@ def script_11():
     def main():
         print("=== 游戏字体安装脚本 ===\n")
 
-        # 1. 检查游戏根目录结构
         game_root = ROOT_DIR
         print(f"[1] 游戏根目录: {game_root}")
 
-        # 检查必要的目录结构
         game_dir = os.path.join(game_root, "game")
         if not os.path.exists(game_dir):
             print("错误：未找到 game 文件夹！")
-            input("按回车键返回主菜单...")
+            wait_for_return()
             return
 
-        schinese_dir = os.path.join(game_root, "game", "tl", "schinese")
-        if not os.path.exists(schinese_dir):
-            print("错误：未找到 game/tl/schinese 文件夹！")
-            input("按回车键返回主菜单...")
+        tl_dir = get_tl_path()
+        if not os.path.exists(tl_dir):
+            print(f"错误：未找到 game/tl/{TRANSLATION_DIR} 文件夹！")
+            wait_for_return()
             return
 
         print("[2] 游戏目录结构检查通过")
-        print(f"[3] 字体将直接解压到: {schinese_dir}")
+        print(f"[3] 字体将直接解压到: {tl_dir}")
 
-        # --- 修改后的字体选择功能 ---
         selected_font = None
         
         while selected_font is None:
@@ -1927,30 +1761,22 @@ def script_11():
                     print(f"✓ 已选择自定义字体: {selected_font}")
                 else:
                     print("✗ 自定义字体选择失败，请重新选择")
-                    # 继续循环，重新显示选择菜单
             else:
                 print("无效选择，请重新输入")
 
-        # --- 字体安装逻辑 ---
-        # 如果选择的是选项1或2，需要解压内置字体
         if font_choice in ["1", "2"] and selected_font in PACKED_FONTS:
             packed_fonts = PACKED_FONTS
             print(f"[5] 成功加载 PACKED_FONTS，共 {len(packed_fonts)} 个字体")
 
-            # 解压选择的字体到schinese目录
             try:
                 font_name = selected_font
                 encoded_data = packed_fonts[font_name]
                 print(f"[6] 正在处理字体: {font_name}")
-                # 去掉换行和空格
                 compressed_str = "".join(encoded_data.split())
-                # base64 解码
                 compressed_bytes = base64.b64decode(compressed_str)
-                # gzip 解压
                 font_data = gzip.decompress(compressed_bytes)
 
-                # 直接解压到schinese目录
-                font_path = os.path.join(schinese_dir, font_name)
+                font_path = os.path.join(tl_dir, font_name)
                 with open(font_path, "wb") as f:
                     f.write(font_data)
                 print(f"[6] 成功安装字体到: {font_path}")
@@ -1959,15 +1785,12 @@ def script_11():
                 print(f"[!] 处理字体 {selected_font} 失败: {e}")
                 return
         elif font_choice == "3":
-            # 自定义字体已经在上面的select_custom_font函数中处理
             print(f"[5] 使用自定义字体: {selected_font}")
         else:
             print(f"[!] 字体处理异常，选择的字体: {selected_font}")
 
-        # 生成style.rpy配置文件（使用新的高级字体配置）
-        style_rpy_path = os.path.join(schinese_dir, "style.rpy")
+        style_rpy_path = os.path.join(tl_dir, "style.rpy")
         
-        # 根据选择的字体生成配置内容
         style_rpy_content = f'''init python early hide:
     import renpy
 
@@ -1992,7 +1815,7 @@ def script_11():
 
     # 定义多语言字体映射表
     global tl_font_dic
-    tl_font_dic["schinese"] = "tl/schinese/{selected_font}", False
+    tl_font_dic["{TRANSLATION_DIR}"] = "tl/{TRANSLATION_DIR}/{selected_font}", False
 
     # 修复 reload_all 导致字体钩子失效的问题
     old_reload_all = renpy.reload_all
@@ -2013,42 +1836,42 @@ def script_11():
         print("\n=== 游戏字体安装脚本执行完毕 ===")
         print(f"已成功配置字体: {selected_font}")
         print("\n=== 完成！请手动关闭面板 ===")
-        input("按回车键返回主菜单...")
+        wait_for_return()
 
     main()
 
 def script_12():
-    """12.额外文本写入replace.py - 原封不动"""
+    """12.额外文本写入replace.py"""
     print("=== 执行: 12.额外文本写入replace.py ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
     
     import os
     import re
     import shutil
     import time
 
-    # 1. 定义文件路径和目标路径
-    ROOT_DIR_LOCAL = ROOT_DIR # 脚本所在目录即为游戏根目录
-    TRANSLATE_PATH = os.path.join(ROOT_DIR_LOCAL, 'game', 'tl', 'schinese', 'translate.rpy')
+    root_dir_local = ROOT_DIR
+    TRANSLATE_PATH = os.path.join(get_tl_path(), 'translate.rpy')
     REPLACE_FILENAME = 'replace.rpy'
-    TEMP_REPLACE_PATH = os.path.join(ROOT_DIR_LOCAL, REPLACE_FILENAME) # 临时生成在根目录
-    FINAL_REPLACE_DIR = os.path.join(ROOT_DIR_LOCAL, 'game', 'tl', 'schinese') # 最终目标目录
+    TEMP_REPLACE_PATH = os.path.join(root_dir_local, REPLACE_FILENAME)
+    FINAL_REPLACE_DIR = get_tl_path()
 
     def generate_replace_rpy():
         print(f"--- 步骤 1: 检查文件路径 ---")
-        print(f"游戏根目录: {ROOT_DIR_LOCAL}")
+        print(f"游戏根目录: {root_dir_local}")
         print(f"源文件路径: {TRANSLATE_PATH}")
         print(f"目标文件夹: {FINAL_REPLACE_DIR}")
 
-        # 检查源文件是否存在
         if not os.path.exists(TRANSLATE_PATH):
             print(f"\n错误：未找到源文件 {TRANSLATE_PATH}")
-            print("请确保脚本位于游戏根目录下，并且文件路径 'game/tl/schinese/translate.rpy' 正确无误。")
+            print("请确保脚本位于游戏根目录下，并且文件路径 'game/tl/{TRANSLATION_DIR}/translate.rpy' 正确无误。")
             return
 
         print(f"\n--- 步骤 2: 读取 {TRANSLATE_PATH} 并提取替换内容 ---")
         
-        # 2. 正则表达式模式：匹配 old "..." 和 new "..." 模式
-        # 注意：使用非贪婪匹配 (.*?) 以避免匹配到多个字符串块。
         pattern = re.compile(r'^\s*old\s+"(.*?)"\s*$\s*^\s*new\s+"(.*?)"\s*$', re.MULTILINE)
         
         try:
@@ -2067,24 +1890,18 @@ def script_12():
         print(f"成功找到 {len(matches)} 组翻译对。")
         print(f"\n--- 步骤 3: 构造 replace.rpy 文件内容 ---")
 
-        # 3. 构造 replace.rpy 文件的头部和函数体
         header = (
             'init python:\n'
             '\n'
             '    import re\n'
             '    def replace_text(t):\n'
-            '        ### schinese\n'
-            '        if _preferences.language == "schinese":\n'
+            f'        ### {TRANSLATION_DIR}\n'
+            f'        if _preferences.language == "{TRANSLATION_DIR}":\n'
             '\n'
         )
         
         replace_lines = []
-        # 转换格式： old "原内容" / new "翻译" -> t = t.replace("原内容" , "翻译")
         for original, translated in matches:
-            # Ren'Py 翻译文件中的 old/new 内容是 Unicode 字符串，
-            # 在 Python 中写入时，将双引号转义为 \"
-            # 注意：这里的 original 和 translated 不再包含前后的空格，因为正则捕获组已排除。
-            # 如果您的 translate.rpy 中 old/new 内部包含换行符或其他复杂字符，可能需要调整正则。
             replace_line = f'            t = t.replace("{original}" , "{translated}")'
             replace_lines.append(replace_line)
 
@@ -2096,7 +1913,6 @@ def script_12():
         
         final_content = header + '\n'.join(replace_lines) + footer
 
-        # 4. 生成 replace.rpy 文件到根目录
         try:
             with open(TEMP_REPLACE_PATH, 'w', encoding='utf-8') as f:
                 f.write(final_content)
@@ -2106,10 +1922,8 @@ def script_12():
             print(f"\n错误：写入文件时发生异常: {e}")
             return
 
-        # 5. 剪切文件到目标目录
         print(f"\n--- 步骤 4: 剪切 {REPLACE_FILENAME} 到目标目录 ---")
         
-        # 确保目标目录存在
         if not os.path.exists(FINAL_REPLACE_DIR):
             os.makedirs(FINAL_REPLACE_DIR)
             print(f"创建了目标目录: {FINAL_REPLACE_DIR}")
@@ -2129,17 +1943,16 @@ def script_12():
             print("\n**请按任意键手动关闭此窗口。**")
 
     generate_replace_rpy()
-    # 保持执行面板不关闭 (需要用户手动关闭)
-    input("按回车键返回主菜单...")
+    wait_for_return()
 
 def script_13():
-    """13.修改打包配置.py - 直接修改原文件版"""
+    """13.修改打包配置.py"""
     print("=== 执行: 13.修改打包配置.py ===")
+    ensure_root_dir()
     
     import os
     import re
 
-    # 当前目录视为游戏根目录
     game_root = ROOT_DIR
     print(f"[1] 游戏根目录: {game_root}")
 
@@ -2149,7 +1962,6 @@ def script_13():
         input("\n按回车退出...")
         return
 
-    # 搜索全部 rpy 文件（排除 tl 文件夹）
     rpy_files = []
     for root, dirs, files in os.walk(game_dir):
         if os.path.normpath(root).startswith(os.path.join(game_dir, "tl")):
@@ -2163,7 +1975,6 @@ def script_13():
     found_archive = False
     found_classify = False
 
-    # 模式
     pattern_archive = re.compile(r'build\.archive\(\s*["\']scripts["\']\s*,\s*["\']all["\']\s*\)')
     pattern_classify = re.compile(r'build\.classify\(\s*["\']game/[^"\']+["\']\s*,\s*["\'][^"\']+["\']\s*\)')
 
@@ -2177,7 +1988,6 @@ def script_13():
             print(f"  ❌ 读取文件失败: {e}")
             continue
 
-        # === 1：优先查找 build.archive ===
         match_archive = pattern_archive.search(content)
         if match_archive:
             found_archive = True
@@ -2192,7 +2002,6 @@ def script_13():
 
             insert_index = None
 
-            # 找到匹配行后，定位其下方的第一个空行
             for i, line in enumerate(lines):
                 if pattern_archive.search(line):
                     for j in range(i + 1, len(lines)):
@@ -2203,14 +2012,13 @@ def script_13():
                     break
 
             if insert_index is not None:
-                # 在空行插入 build.classify 语句
-                lines.insert(insert_index, '    build.classify("game/tl/schinese/**", "scripts")\n')
+                lines.insert(insert_index, f'    build.classify("game/tl/{TRANSLATION_DIR}/**", "scripts")\n')
                 
                 try:
                     with open(rpy_path, "w", encoding="utf-8") as f:
                         f.writelines(lines)
                     print(f"  ✅ 成功插入 build.classify 配置")
-                    print(f"  📝 插入内容: build.classify(\"game/tl/schinese/**\", \"scripts\")")
+                    print(f"  📝 插入内容: build.classify(\"game/tl/{TRANSLATION_DIR}/**\", \"scripts\")")
                 except Exception as e:
                     print(f"  ❌ 写入文件失败: {e}")
             else:
@@ -2219,7 +2027,6 @@ def script_13():
             print()
             continue
 
-        # === 2：若未发现 archive，则查找 classify ===
         match_classify = pattern_classify.search(content)
         if match_classify:
             found_classify = True
@@ -2244,9 +2051,8 @@ def script_13():
                     break
 
             if insert_index is not None:
-                # 在空行插入 build.archive 与 build.classify 语句
                 lines.insert(insert_index, '    build.archive("scripts", "all")\n')
-                lines.insert(insert_index + 1, '    build.classify("game/tl/schinese/**", "scripts")\n')
+                lines.insert(insert_index + 1, f'    build.classify("game/tl/{TRANSLATION_DIR}/**", "scripts")\n')
                 
                 try:
                     with open(rpy_path, "w", encoding="utf-8") as f:
@@ -2254,7 +2060,7 @@ def script_13():
                     print(f"  ✅ 成功插入 build.archive 和 build.classify 配置")
                     print(f"  📝 插入内容:")
                     print(f"      build.archive(\"scripts\", \"all\")")
-                    print(f"      build.classify(\"game/tl/schinese/**\", \"scripts\")")
+                    print(f"      build.classify(\"game/tl/{TRANSLATION_DIR}/**\", \"scripts\")")
                 except Exception as e:
                     print(f"  ❌ 写入文件失败: {e}")
             else:
@@ -2262,7 +2068,6 @@ def script_13():
 
             print()
 
-    # === 总结 ===
     print("=" * 50)
     print("执行结果汇总:")
     print("=" * 50)
@@ -2279,9 +2084,158 @@ def script_13():
 
     input("\n执行完毕，按回车键返回主菜单...")
 
+def script_16():
+    """16.删除错误的 {} .py"""
+    print("=== 执行: 16.删除错误的 {} .py ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
+    
+    import os
+    import re
+    import datetime
+    import sys
+
+    def extract_brackets(text):
+        return re.findall(r'\{[^}]*\}', text)
+
+    def process_translation_pair(orig_line, trans_line, line_num, filename, log_file):
+        orig_brackets = extract_brackets(orig_line)
+        trans_brackets = extract_brackets(trans_line)
+        
+        if not trans_brackets:
+            return trans_line, False
+        
+        if orig_brackets == trans_brackets:
+            return trans_line, False
+        
+        repaired_line = re.sub(r'\{[^}]*\}', '', trans_line)
+        
+        log_file.write(f"第{line_num}行 - 大括号不一致:\n")
+        log_file.write(f"原文: {orig_line.strip()}\n")
+        log_file.write(f"译文: {trans_line.strip()}\n")
+        log_file.write(f"修复后：{repaired_line.strip()}\n")
+        log_file.write(f"原文括号: {orig_brackets}\n")
+        log_file.write(f"译文括号: {trans_brackets}\n")
+        log_file.write("--------------------------------------------------\n")
+        
+        return repaired_line, True
+
+    def process_rpy_file(filepath, log_file):
+        filename = os.path.basename(filepath)
+        print(f"检查修复文件: {filename}")
+        
+        log_file.write("=" * 60 + "\n")
+        log_file.write(f"检查修复文件: {filename}\n")
+        log_file.write(f"检查时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        log_file.write("=" * 60 + "\n")
+        
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+        except Exception as e:
+            print(f"❌ 读取文件失败: {e}")
+            log_file.write(f"❌ 读取文件失败: {e}\n")
+            log_file.write("=" * 60 + "\n\n")
+            return
+        
+        modified = False
+        new_lines = []
+        i = 0
+        total_lines = len(lines)
+        
+        while i < total_lines:
+            line = lines[i]
+            new_lines.append(line)
+            
+            if line.strip().startswith('#') and '"' in line:
+                orig_line = line
+                
+                if i + 1 < total_lines and not lines[i + 1].strip().startswith('#') and '"' in lines[i + 1]:
+                    trans_line = lines[i + 1]
+                    
+                    repaired_line, was_repaired = process_translation_pair(
+                        orig_line, trans_line, i + 2, filename, log_file
+                    )
+                    
+                    if was_repaired:
+                        modified = True
+                        new_lines.append(repaired_line + '\n')
+                        i += 2
+                        continue
+            
+            i += 1
+        
+        if modified:
+            try:
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.writelines(new_lines)
+                print(f"✅ 文件已修复")
+            except Exception as e:
+                print(f"❌ 写入文件失败: {e}")
+                log_file.write(f"❌ 写入文件失败: {e}\n")
+        else:
+            print("✅ 文件无需修复，所有翻译对的括号标记都一致！")
+            log_file.write("✅ 文件无需修复，所有翻译对的括号标记都一致！\n")
+        
+        log_file.write("=" * 60 + "\n\n")
+
+    def main():
+        script_dir = ROOT_DIR
+        target_dir = get_tl_path()
+        
+        if not os.path.exists(target_dir):
+            print(f"❌ 目标目录不存在: {target_dir}")
+            print("请确保脚本在游戏根目录运行")
+            wait_for_return()
+            return
+        
+        log_filepath = os.path.join(script_dir, "translation_repair.log")
+        
+        try:
+            with open(log_filepath, 'w', encoding='utf-8') as log_file:
+                log_file.write("翻译修复日志\n")
+                log_file.write(f"开始时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                log_file.write("=" * 60 + "\n\n")
+                
+                rpy_files = []
+                for root, dirs, files in os.walk(target_dir):
+                    for file in files:
+                        if file.endswith('.rpy'):
+                            rpy_files.append(os.path.join(root, file))
+                
+                if not rpy_files:
+                    print("❌ 未找到任何rpy文件")
+                    log_file.write("❌ 未找到任何rpy文件\n")
+                    return
+                
+                print(f"找到 {len(rpy_files)} 个rpy文件")
+                print("开始检查修复...\n")
+                
+                for rpy_file in rpy_files:
+                    process_rpy_file(rpy_file, log_file)
+                
+                log_file.write(f"完成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                print("\n✅ 所有文件处理完成！")
+                
+        except Exception as e:
+            print(f"❌ 程序执行出错: {e}")
+        
+        print("\n程序执行完毕，请查看 translation_repair.log 文件了解详细情况")
+        wait_for_return()
+
+    main()
+
+# ============================ 功能区四函数 ============================
+
 def script_14():
-    """14.提取额外额外文本3.6.py - 原封不动"""
+    """14.提取额外额外文本3.6.py"""
     print("=== 执行: 14.提取额外额外文本3.6.py ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
     
     import os
     import re
@@ -2289,11 +2243,7 @@ def script_14():
     from pathlib import Path
     import sys
 
-    # --- 配置 ---
-    # 脚本根目录即为游戏根目录
     PROJECT_ROOT = Path(ROOT_DIR)
-
-    # 记忆池文件名
     POOL_A = PROJECT_ROOT / "记忆池A.txt"
     POOL_B = PROJECT_ROOT / "记忆池B.txt"
     POOL_C = PROJECT_ROOT / "记忆池C.txt"
@@ -2301,19 +2251,13 @@ def script_14():
     POOL_E = PROJECT_ROOT / "记忆池E.txt"
     NAME_DELE = PROJECT_ROOT / "NameDele.txt"
     TRANSLATE_RPY = PROJECT_ROOT / "translate01.rpy"
-
-    # 目标搜索目录
     GAME_DIR = PROJECT_ROOT / "game"
-    TL_S_CHINESE_DIR = PROJECT_ROOT / "game" / "tl" / "schinese"
+    TL_S_CHINESE_DIR = PROJECT_ROOT / "game" / "tl" / TRANSLATION_DIR
 
-    # --- 从功能模块1导入的提取规则 ---
     def etx_unescape_string(s):
-        """处理字符串中的转义序列"""
-        # 已移除转义处理以保持原文不变
         return s
 
     def etx_is_valid_name(name):
-        """检查名称是否有效，过滤掉不需要的条目（人名专用过滤规则）。"""
         FILE_EXTENSIONS = (
             '.webp', '.webm', '.ttf', '.otf', '.jpg', '.png', '.gif', '.jpeg', 
             '.avif', '.mp3', '.wav', '.wmv', '.mp4', '.psd', '.ogg'
@@ -2332,7 +2276,6 @@ def script_14():
         return True
 
     def etx_extract_character_names(filename, script_dir):
-        """从单个 .rpy 文件中提取角色名称，并返回 (名称, 路径, 行号) 的元组列表"""
         pattern = re.compile(
             r'''
             ^\s*                                   # 行首可有空格
@@ -2359,17 +2302,12 @@ def script_14():
                     line_num = i + 1
                     line_stripped = line.strip()
                     
-                    # 使用新的正则表达式进行匹配
                     match = pattern.search(line_stripped)
                     if match:
-                        # 提取两种可能的名称
                         name1 = match.group('name1')
                         name2 = match.group('name2')
-                        
-                        # 确定实际使用的名称
                         name = name1 if name1 else name2
                         
-                        # 保持原文，不做反斜杠转义处理
                         if name and name.strip() and name not in seen:
                             seen.add(name)
                             names_data.append((name.strip(), relative_path, line_num))
@@ -2378,12 +2316,8 @@ def script_14():
         return names_data
 
     def etx_filter_extracted_strings(string_data):
-        """
-        对提取的字符串数据列表进行过滤，并返回被删除的字符串列表。
-        每个元素是一个元组 (string, path, line)。
-        """
         filtered_list = []
-        deleted_list = [] # 用于存放被删除的字符串文本
+        deleted_list = []
 
         file_extensions = ('.mp3', '.png', '.jpg', '.jpeg', '.ogg', '.wav', '.webp', '.gif', '.avi', '.mp4', '.mov', '.webm', '.flv', '.wmv')
 
@@ -2431,22 +2365,14 @@ def script_14():
                 deleted_list.append(original_string)
                 continue
 
-            #has_uppercase = any(char.isupper() for char in string)
-
-            #if not has_uppercase:
-                deleted_list.append(original_string)
-                continue
-
-            #if string and string[0].islower() and not has_uppercase:
-                deleted_list.append(original_string)
-                continue
+            deleted_list.append(original_string)
+            continue
 
             filtered_list.append(item)
 
         return filtered_list, deleted_list
 
     def etx_extract_strings_from_rpy(file_path):
-        """从rpy文件中提取字符串及其位置信息(string, path, line)"""
         text_data = []
         variable_data = []
         replace_data = []
@@ -2592,7 +2518,6 @@ def script_14():
         return unique_text, unique_variable, unique_replace
 
     def etx_extract_old_new_translations(file_path):
-        """从翻译文件中提取 old/new 翻译对"""
         old_strings = []
         new_strings = []
         try:
@@ -2610,7 +2535,6 @@ def script_14():
         return old_strings[:min_length], new_strings[:min_length]
 
     def etx_scan_directory_for_rpy(directory, exclude_dirs=None):
-        """扫描目录下的所有.rpy文件"""
         if exclude_dirs is None:
             exclude_dirs = []
         rpy_files = []
@@ -2625,77 +2549,47 @@ def script_14():
             print(f"扫描目录 {directory} 时出错: {e}")
         return rpy_files
 
-    # --- 核心函数：规则1: rpy文件字符串提取 (使用功能模块1的完整规则) ---
     def extract_rpy_strings(file_path):
-        """
-        从 .rpy 文件中提取四类字符串：人名, 文本, 变量, 替换。
-        使用功能模块1的完整提取规则。
-        返回格式：[人名列表, 文本列表, 变量列表, 替换列表]
-        每个列表元素格式：(string, relative_path, line_number)
-        """
-        # 提取角色名
         name_strings = etx_extract_character_names(file_path, PROJECT_ROOT)
-        
-        # 提取其他文本类型
         text_strings, variable_strings, replace_strings = etx_extract_strings_from_rpy(file_path)
-        
-        # 合并所有提取的字符串
         all_strings = name_strings + text_strings + variable_strings + replace_strings
-        
         return [all_strings, text_strings, variable_strings, replace_strings]
 
-    # --- 核心函数：规则4: 统一字符串过滤 (使用功能模块1的筛选规则) ---
     def shared_filter_strings(strings_with_info):
-        """
-        统一的字符串过滤函数，使用功能模块1的筛选规则。
-        (strings_with_info 格式: [(string, file_path, line_number), ...])
-        """
         print("\n[步骤4] 正在执行统一字符串筛选...")
-        
-        # 使用功能模块1的筛选函数
         filtered_list, deleted_list = etx_filter_extracted_strings(strings_with_info)
-        
         print(f"    筛选完成。原始: {len(strings_with_info)} 条, 过滤后: {len(filtered_list)} 条, 移除: {len(deleted_list)} 条。")
-        
         return filtered_list, deleted_list
 
-    # --- 新函数：从tl/schinese文件夹提取字符串 ---
     def extract_tl_schinese_strings(file_path):
-        """从tl/schinese文件夹中的rpy文件提取字符串，使用指定的正则表达式"""
         extracted_strings = []
         try:
             with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
-                # 使用指定的正则表达式提取内容
                 pattern = r'"((?:\\.|[^"\\])*)"'
                 matches = re.findall(pattern, content)
                 for match in matches:
-                    # 保持原文不变，不做任何转义处理
                     extracted_strings.append(match)
         except Exception as e:
             print(f"处理文件 {file_path} 时出错: {e}")
         return extracted_strings
 
-    # --- 主执行流程 ---
     def main():
         print("--- Ren'Py 额外文本提取与翻译辅助脚本 V1.0 (修改版) ---")
         print(f"项目根目录: {PROJECT_ROOT}\n")
 
-        # 步骤 2: 生成文件（如果不存在）并清空内容
         print("[步骤2] 正在创建/清空记忆池文件和辅助文件...")
         for f in [POOL_A, POOL_B, POOL_C, POOL_D, POOL_E, NAME_DELE, TRANSLATE_RPY]:
             try:
                 with open(f, 'w', encoding='utf-8') as fp:
                     if f == TRANSLATE_RPY:
-                        # 步骤 8: 写入 translate.rpy 的起始内容
-                        fp.write('translate schinese strings:\n')
+                        fp.write(f'translate {TRANSLATION_DIR} strings:\n')
                     pass
                 print(f"    已创建/清空: {f.name}")
             except Exception as e:
                 print(f"    !!! 错误：创建/清空文件 {f.name} 失败: {e}")
                 sys.exit(1)
         
-        # 步骤 3: 遍历 game 文件夹并提取内容写入 记忆池C
         print("\n[步骤3] 正在遍历 game 文件夹并提取rpy文件中的字符串写入记忆池C...")
         all_extracted_strings = []
         game_path = PROJECT_ROOT / "game"
@@ -2705,27 +2599,21 @@ def script_14():
             print("    请检查脚本位置是否正确（应在游戏根目录）。")
             return
 
-        # 使用功能模块1的扫描函数
         rpy_files = etx_scan_directory_for_rpy(str(game_path), exclude_dirs=['tl'])
         
         for file_path in rpy_files:
-            # 排除 tl 文件夹内的所有文件
             if 'tl' not in file_path:
                 extracted = extract_rpy_strings(file_path)
-                # extracted[0] 包含所有提取到的字符串信息 [(string, relative_path, line_number)]
                 all_extracted_strings.extend(extracted[0])
 
-        # 写入 记忆池C
         try:
             with open(POOL_C, 'w', encoding='utf-8') as f:
                 for string, file_path, line_number in all_extracted_strings:
-                    # 写入格式: string\tfile_path\tline_number
                     f.write(f"{string}\t{file_path}\t{line_number}\n")
             print(f"    所有提取到的 {len(all_extracted_strings)} 条内容已写入 {POOL_C}。")
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_C} 时出错: {e}")
 
-        # 步骤 4: 读取记忆池C，将第一列内容写入记忆池D
         print("\n[步骤4] 正在读取记忆池C，将第一列内容写入记忆池D...")
         first_column_lines = []
         
@@ -2735,14 +2623,12 @@ def script_14():
                     line = line.rstrip("\n")
                     if line.strip() == "":
                         continue
-                    # 按制表符分列，取第一列
                     first_col = line.split("\t", 1)[0]
                     first_column_lines.append(first_col)
         except Exception as e:
             print(f"    !!! 错误：读取 {POOL_C} 时出错: {e}")
             return
 
-        # 写入记忆池D
         try:
             with open(POOL_D, 'w', encoding='utf-8') as f:
                 for item in first_column_lines:
@@ -2751,22 +2637,12 @@ def script_14():
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_D} 时出错: {e}")
 
-        # 步骤 5: 对记忆池D的内容进行筛选和去重，结果写入记忆池A
         print("\n[步骤5] 正在对记忆池D的内容进行筛选和去重...")
-        
-        # 将记忆池D的内容转换为与筛选函数兼容的格式
         d_strings_with_info = [(line, "", 0) for line in first_column_lines]
-        
-        # 使用功能模块1的筛选规则
         filtered_strings, _ = shared_filter_strings(d_strings_with_info)
-        
-        # 提取筛选后的字符串内容
         filtered_content = [item[0] for item in filtered_strings]
-        
-        # 整行去重（基于字符串内容）
         unique_content = list(dict.fromkeys(filtered_content))
         
-        # 写入记忆池A
         try:
             with open(POOL_A, 'w', encoding='utf-8') as f:
                 for item in unique_content:
@@ -2775,15 +2651,13 @@ def script_14():
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_A} 时出错: {e}")
 
-        # 步骤 6: 遍历 tl/schinese 文件夹提取内容写入 记忆池B
-        print("\n[步骤6] 正在遍历 tl/schinese 文件夹提取字符串写入记忆池B...")
-        tl_schinese_path = PROJECT_ROOT / "game" / "tl" / "schinese"
+        print("\n[步骤6] 正在遍历 tl/翻译文件夹 提取字符串写入记忆池B...")
+        tl_schinese_path = PROJECT_ROOT / "game" / "tl" / TRANSLATION_DIR
         extracted_tl_strings = []
         
         if not tl_schinese_path.exists():
             print(f"    警告：翻译文件夹不存在: {tl_schinese_path}，记忆池B将为空。")
         else:
-            # 扫描tl/schinese文件夹中的所有rpy文件
             tl_rpy_files = etx_scan_directory_for_rpy(str(tl_schinese_path))
             for file_path in tl_rpy_files:
                 try:
@@ -2793,16 +2667,14 @@ def script_14():
                 except Exception as e:
                     print(f"    !!! 错误：读取翻译文件 {file_path} 时出错: {e}")
 
-        # 写入记忆池B
         try:
             with open(POOL_B, 'w', encoding='utf-8') as f:
                 for item in extracted_tl_strings:
                     f.write(f"{item}\n")
-            print(f"    已从 tl/schinese 提取 {len(extracted_tl_strings)} 条内容并写入 {POOL_B}。")
+            print(f"    已从 tl/{TRANSLATION_DIR} 提取 {len(extracted_tl_strings)} 条内容并写入 {POOL_B}。")
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_B} 时出错: {e}")
 
-        # 步骤 7: 匹配 记忆池A 和 记忆池B，结果写入 NameDele.txt 和 记忆池E
         print("\n[步骤7] 正在进行记忆池A和B的匹配和分离...")
         try:
             with open(POOL_A, "r", encoding="utf-8") as a:
@@ -2813,7 +2685,6 @@ def script_14():
         
         try:
             with open(POOL_B, "r", encoding="utf-8") as b:
-                # 使用 set 进行快速查找
                 lines_B = set([l.strip() for l in b.readlines() if l.strip()])
         except FileNotFoundError:
             print(f"    警告：文件 {POOL_B} 不存在，所有内容将写入 {POOL_E}。")
@@ -2826,10 +2697,10 @@ def script_14():
             with open(POOL_E, "w", encoding="utf-8") as pool_e, open(NAME_DELE, "a", encoding="utf-8") as dele:
                 for line in lines_A:
                     if line in lines_B:
-                        dele.write(line + "\n\n") # 匹配内容写入 NameDele.txt 并空行
+                        dele.write(line + "\n\n")
                         matched_count += 1
                     else:
-                        pool_e.write(line + "\n") # 不能匹配的内容写入 记忆池E
+                        pool_e.write(line + "\n")
                         unmatched_count += 1
                         
             print(f"    匹配完成：匹配到 {matched_count} 条，未匹配 {unmatched_count} 条。")
@@ -2839,24 +2710,19 @@ def script_14():
         except Exception as e:
             print(f"    !!! 错误：在步骤7中处理文件时出错: {e}")
 
-        # 步骤 9: 遍历 记忆池E 写入 translate.rpy
         print("\n[步骤9] 正在将记忆池E的内容格式化写入 translate.rpy...")
         try:
-            # 读取记忆池E
             with open(POOL_E, "r", encoding="utf-8") as f:
                 e_lines = [l.strip() for l in f.readlines() if l.strip()]
                 
             with open(TRANSLATE_RPY, "a", encoding="utf-8") as f:
                 for line in e_lines:
-                    # 格式: old "行内容" \n new ""
-                    # 按用户要求保留原文不变：直接写入提取到的原始文本（不进行任何转义处理）
                     f.write(f'\n    old "{line}"\n    new ""\n')
             
             print(f"    已将 {len(e_lines)} 条内容格式化追加到 {TRANSLATE_RPY}。")
         except Exception as e:
             print(f"    !!! 错误：在步骤9中处理文件时出错: {e}")
 
-        # 步骤 10: 删除临时文件
         print("\n[步骤10] 正在删除临时文件...")
         temp_files = [POOL_A, POOL_B, POOL_C, POOL_D, POOL_E, NAME_DELE]
         for temp_file in temp_files:
@@ -2868,17 +2734,20 @@ def script_14():
                 print(f"    !!! 错误：删除文件 {temp_file.name} 失败: {e}")
         
         print("\n--- 脚本执行完毕 ---")
-        input("请按任意键关闭窗口...") # 确保执行面板不会自动关闭
+        input("请按任意键关闭窗口...")
 
     if __name__ == "__main__":
         main()
 
-    # 保持执行面板不关闭 (需要用户手动关闭)
-        input("按回车键返回主菜单...")
+    wait_for_return()
 
 def script_15():
-    """15.提取额外额外文本3.9.py - 原封不动"""
+    """15.提取额外额外文本3.9.py"""
     print("=== 执行: 15.提取额外额外文本3.9.py ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
     
     import os
     import re
@@ -2886,11 +2755,7 @@ def script_15():
     from pathlib import Path
     import sys
 
-    # --- 配置 ---
-    # 脚本根目录即为游戏根目录
     PROJECT_ROOT = Path(ROOT_DIR)
-
-    # 记忆池文件名
     POOL_A = PROJECT_ROOT / "记忆池A.txt"
     POOL_B = PROJECT_ROOT / "记忆池B.txt"
     POOL_C = PROJECT_ROOT / "记忆池C.txt"
@@ -2898,19 +2763,13 @@ def script_15():
     POOL_E = PROJECT_ROOT / "记忆池E.txt"
     NAME_DELE = PROJECT_ROOT / "NameDele.txt"
     TRANSLATE_RPY = PROJECT_ROOT / "translate01.rpy"
-
-    # 目标搜索目录
     GAME_DIR = PROJECT_ROOT / "game"
-    TL_S_CHINESE_DIR = PROJECT_ROOT / "game" / "tl" / "schinese"
+    TL_S_CHINESE_DIR = PROJECT_ROOT / "game" / "tl" / TRANSLATION_DIR
 
-    # --- 从功能模块1导入的提取规则 ---
     def etx_unescape_string(s):
-        """处理字符串中的转义序列"""
-        # 已移除转义处理以保持原文不变
         return s
 
     def etx_is_valid_name(name):
-        """检查名称是否有效，过滤掉不需要的条目（人名专用过滤规则）。"""
         FILE_EXTENSIONS = (
             '.webp', '.webm', '.ttf', '.otf', '.jpg', '.png', '.gif', '.jpeg', 
             '.avif', '.mp3', '.wav', '.wmv', '.mp4', '.psd', '.ogg'
@@ -2929,7 +2788,6 @@ def script_15():
         return True
 
     def etx_extract_character_names(filename, script_dir):
-        """从单个 .rpy 文件中提取角色名称，并返回 (名称, 路径, 行号) 的元组列表"""
         pattern = re.compile(
             r'''
             ^\s*                                   # 行首可有空格
@@ -2956,17 +2814,12 @@ def script_15():
                     line_num = i + 1
                     line_stripped = line.strip()
                     
-                    # 使用新的正则表达式进行匹配
                     match = pattern.search(line_stripped)
                     if match:
-                        # 提取两种可能的名称
                         name1 = match.group('name1')
                         name2 = match.group('name2')
-                        
-                        # 确定实际使用的名称
                         name = name1 if name1 else name2
                         
-                        # 保持原文，不做反斜杠转义处理
                         if name and name.strip() and name not in seen:
                             seen.add(name)
                             names_data.append((name.strip(), relative_path, line_num))
@@ -2975,12 +2828,8 @@ def script_15():
         return names_data
 
     def etx_filter_extracted_strings(string_data):
-        """
-        对提取的字符串数据列表进行过滤，并返回被删除的字符串列表。
-        每个元素是一个元组 (string, path, line)。
-        """
         filtered_list = []
-        deleted_list = [] # 用于存放被删除的字符串文本
+        deleted_list = []
 
         file_extensions = ('.mp3', '.png', '.jpg', '.jpeg', '.ogg', '.wav', '.webp', '.gif', '.avi', '.mp4', '.mov', '.webm', '.flv', '.wmv')
 
@@ -3028,7 +2877,6 @@ def script_15():
                 deleted_list.append(original_string)
                 continue
 
-            # 新的筛选规则：只保留包含空格的内容
             has_space = ' ' in string
             if not has_space:
                 deleted_list.append(original_string)
@@ -3039,7 +2887,6 @@ def script_15():
         return filtered_list, deleted_list
 
     def etx_extract_strings_from_rpy(file_path):
-        """从rpy文件中提取字符串及其位置信息(string, path, line)"""
         text_data = []
         variable_data = []
         replace_data = []
@@ -3185,7 +3032,6 @@ def script_15():
         return unique_text, unique_variable, unique_replace
 
     def etx_extract_old_new_translations(file_path):
-        """从翻译文件中提取 old/new 翻译对"""
         old_strings = []
         new_strings = []
         try:
@@ -3203,7 +3049,6 @@ def script_15():
         return old_strings[:min_length], new_strings[:min_length]
 
     def etx_scan_directory_for_rpy(directory, exclude_dirs=None):
-        """扫描目录下的所有.rpy文件"""
         if exclude_dirs is None:
             exclude_dirs = []
         rpy_files = []
@@ -3218,77 +3063,47 @@ def script_15():
             print(f"扫描目录 {directory} 时出错: {e}")
         return rpy_files
 
-    # --- 核心函数：规则1: rpy文件字符串提取 (使用功能模块1的完整规则) ---
     def extract_rpy_strings(file_path):
-        """
-        从 .rpy 文件中提取四类字符串：人名, 文本, 变量, 替换。
-        使用功能模块1的完整提取规则。
-        返回格式：[人名列表, 文本列表, 变量列表, 替换列表]
-        每个列表元素格式：(string, relative_path, line_number)
-        """
-        # 提取角色名
         name_strings = etx_extract_character_names(file_path, PROJECT_ROOT)
-        
-        # 提取其他文本类型
         text_strings, variable_strings, replace_strings = etx_extract_strings_from_rpy(file_path)
-        
-        # 合并所有提取的字符串
         all_strings = name_strings + text_strings + variable_strings + replace_strings
-        
         return [all_strings, text_strings, variable_strings, replace_strings]
 
-    # --- 核心函数：规则4: 统一字符串过滤 (使用功能模块1的筛选规则) ---
     def shared_filter_strings(strings_with_info):
-        """
-        统一的字符串过滤函数，使用功能模块1的筛选规则。
-        (strings_with_info 格式: [(string, file_path, line_number), ...])
-        """
         print("\n[步骤4] 正在执行统一字符串筛选...")
-        
-        # 使用功能模块1的筛选函数
         filtered_list, deleted_list = etx_filter_extracted_strings(strings_with_info)
-        
         print(f"    筛选完成。原始: {len(strings_with_info)} 条, 过滤后: {len(filtered_list)} 条, 移除: {len(deleted_list)} 条。")
-        
         return filtered_list, deleted_list
 
-    # --- 新函数：从tl/schinese文件夹提取字符串 ---
     def extract_tl_schinese_strings(file_path):
-        """从tl/schinese文件夹中的rpy文件提取字符串，使用指定的正则表达式"""
         extracted_strings = []
         try:
             with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
-                # 使用指定的正则表达式提取内容
                 pattern = r'"((?:\\.|[^"\\])*)"'
                 matches = re.findall(pattern, content)
                 for match in matches:
-                    # 保持原文不变，不做任何转义处理
                     extracted_strings.append(match)
         except Exception as e:
             print(f"处理文件 {file_path} 时出错: {e}")
         return extracted_strings
 
-    # --- 主执行流程 ---
     def main():
         print("--- Ren'Py 额外文本提取与翻译辅助脚本 V1.0 (修改版) ---")
         print(f"项目根目录: {PROJECT_ROOT}\n")
 
-        # 步骤 2: 生成文件（如果不存在）并清空内容
         print("[步骤2] 正在创建/清空记忆池文件和辅助文件...")
         for f in [POOL_A, POOL_B, POOL_C, POOL_D, POOL_E, NAME_DELE, TRANSLATE_RPY]:
             try:
                 with open(f, 'w', encoding='utf-8') as fp:
                     if f == TRANSLATE_RPY:
-                        # 步骤 8: 写入 translate.rpy 的起始内容
-                        fp.write('translate schinese strings:\n')
+                        fp.write(f'translate {TRANSLATION_DIR} strings:\n')
                     pass
                 print(f"    已创建/清空: {f.name}")
             except Exception as e:
                 print(f"    !!! 错误：创建/清空文件 {f.name} 失败: {e}")
                 sys.exit(1)
         
-        # 步骤 3: 遍历 game 文件夹并提取内容写入 记忆池C
         print("\n[步骤3] 正在遍历 game 文件夹并提取rpy文件中的字符串写入记忆池C...")
         all_extracted_strings = []
         game_path = PROJECT_ROOT / "game"
@@ -3298,27 +3113,21 @@ def script_15():
             print("    请检查脚本位置是否正确（应在游戏根目录）。")
             return
 
-        # 使用功能模块1的扫描函数
         rpy_files = etx_scan_directory_for_rpy(str(game_path), exclude_dirs=['tl'])
         
         for file_path in rpy_files:
-            # 排除 tl 文件夹内的所有文件
             if 'tl' not in file_path:
                 extracted = extract_rpy_strings(file_path)
-                # extracted[0] 包含所有提取到的字符串信息 [(string, relative_path, line_number)]
                 all_extracted_strings.extend(extracted[0])
 
-        # 写入 记忆池C
         try:
             with open(POOL_C, 'w', encoding='utf-8') as f:
                 for string, file_path, line_number in all_extracted_strings:
-                    # 写入格式: string\tfile_path\tline_number
                     f.write(f"{string}\t{file_path}\t{line_number}\n")
             print(f"    所有提取到的 {len(all_extracted_strings)} 条内容已写入 {POOL_C}。")
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_C} 时出错: {e}")
 
-        # 步骤 4: 读取记忆池C，将第一列内容写入记忆池D
         print("\n[步骤4] 正在读取记忆池C，将第一列内容写入记忆池D...")
         first_column_lines = []
         
@@ -3328,14 +3137,12 @@ def script_15():
                     line = line.rstrip("\n")
                     if line.strip() == "":
                         continue
-                    # 按制表符分列，取第一列
                     first_col = line.split("\t", 1)[0]
                     first_column_lines.append(first_col)
         except Exception as e:
             print(f"    !!! 错误：读取 {POOL_C} 时出错: {e}")
             return
 
-        # 写入记忆池D
         try:
             with open(POOL_D, 'w', encoding='utf-8') as f:
                 for item in first_column_lines:
@@ -3344,22 +3151,12 @@ def script_15():
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_D} 时出错: {e}")
 
-        # 步骤 5: 对记忆池D的内容进行筛选和去重，结果写入记忆池A
         print("\n[步骤5] 正在对记忆池D的内容进行筛选和去重...")
-        
-        # 将记忆池D的内容转换为与筛选函数兼容的格式
         d_strings_with_info = [(line, "", 0) for line in first_column_lines]
-        
-        # 使用功能模块1的筛选规则
         filtered_strings, _ = shared_filter_strings(d_strings_with_info)
-        
-        # 提取筛选后的字符串内容
         filtered_content = [item[0] for item in filtered_strings]
-        
-        # 整行去重（基于字符串内容）
         unique_content = list(dict.fromkeys(filtered_content))
         
-        # 写入记忆池A
         try:
             with open(POOL_A, 'w', encoding='utf-8') as f:
                 for item in unique_content:
@@ -3368,15 +3165,13 @@ def script_15():
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_A} 时出错: {e}")
 
-        # 步骤 6: 遍历 tl/schinese 文件夹提取内容写入 记忆池B
-        print("\n[步骤6] 正在遍历 tl/schinese 文件夹提取字符串写入记忆池B...")
-        tl_schinese_path = PROJECT_ROOT / "game" / "tl" / "schinese"
+        print("\n[步骤6] 正在遍历 tl/翻译文件夹 提取字符串写入记忆池B...")
+        tl_schinese_path = PROJECT_ROOT / "game" / "tl" / TRANSLATION_DIR
         extracted_tl_strings = []
         
         if not tl_schinese_path.exists():
             print(f"    警告：翻译文件夹不存在: {tl_schinese_path}，记忆池B将为空。")
         else:
-            # 扫描tl/schinese文件夹中的所有rpy文件
             tl_rpy_files = etx_scan_directory_for_rpy(str(tl_schinese_path))
             for file_path in tl_rpy_files:
                 try:
@@ -3386,16 +3181,14 @@ def script_15():
                 except Exception as e:
                     print(f"    !!! 错误：读取翻译文件 {file_path} 时出错: {e}")
 
-        # 写入记忆池B
         try:
             with open(POOL_B, 'w', encoding='utf-8') as f:
                 for item in extracted_tl_strings:
                     f.write(f"{item}\n")
-            print(f"    已从 tl/schinese 提取 {len(extracted_tl_strings)} 条内容并写入 {POOL_B}。")
+            print(f"    已从 tl/{TRANSLATION_DIR} 提取 {len(extracted_tl_strings)} 条内容并写入 {POOL_B}。")
         except Exception as e:
             print(f"    !!! 错误：写入 {POOL_B} 时出错: {e}")
 
-        # 步骤 7: 匹配 记忆池A 和 记忆池B，结果写入 NameDele.txt 和 记忆池E
         print("\n[步骤7] 正在进行记忆池A和B的匹配和分离...")
         try:
             with open(POOL_A, "r", encoding="utf-8") as a:
@@ -3406,7 +3199,6 @@ def script_15():
         
         try:
             with open(POOL_B, "r", encoding="utf-8") as b:
-                # 使用 set 进行快速查找
                 lines_B = set([l.strip() for l in b.readlines() if l.strip()])
         except FileNotFoundError:
             print(f"    警告：文件 {POOL_B} 不存在，所有内容将写入 {POOL_E}。")
@@ -3419,10 +3211,10 @@ def script_15():
             with open(POOL_E, "w", encoding="utf-8") as pool_e, open(NAME_DELE, "a", encoding="utf-8") as dele:
                 for line in lines_A:
                     if line in lines_B:
-                        dele.write(line + "\n\n") # 匹配内容写入 NameDele.txt 并空行
+                        dele.write(line + "\n\n")
                         matched_count += 1
                     else:
-                        pool_e.write(line + "\n") # 不能匹配的内容写入 记忆池E
+                        pool_e.write(line + "\n")
                         unmatched_count += 1
                         
             print(f"    匹配完成：匹配到 {matched_count} 条，未匹配 {unmatched_count} 条。")
@@ -3432,24 +3224,19 @@ def script_15():
         except Exception as e:
             print(f"    !!! 错误：在步骤7中处理文件时出错: {e}")
 
-        # 步骤 9: 遍历 记忆池E 写入 translate.rpy
         print("\n[步骤9] 正在将记忆池E的内容格式化写入 translate.rpy...")
         try:
-            # 读取记忆池E
             with open(POOL_E, "r", encoding="utf-8") as f:
                 e_lines = [l.strip() for l in f.readlines() if l.strip()]
                 
             with open(TRANSLATE_RPY, "a", encoding="utf-8") as f:
                 for line in e_lines:
-                    # 格式: old "行内容" \n new ""
-                    # 按用户要求保留原文不变：直接写入提取到的原始文本（不进行任何转义处理）
                     f.write(f'\n    old "{line}"\n    new ""\n')
             
             print(f"    已将 {len(e_lines)} 条内容格式化追加到 {TRANSLATE_RPY}。")
         except Exception as e:
             print(f"    !!! 错误：在步骤9中处理文件时出错: {e}")
 
-        # 步骤 10: 删除临时文件
         print("\n[步骤10] 正在删除临时文件...")
         temp_files = [POOL_A, POOL_B, POOL_C, POOL_D, POOL_E, NAME_DELE]
         for temp_file in temp_files:
@@ -3461,175 +3248,20 @@ def script_15():
                 print(f"    !!! 错误：删除文件 {temp_file.name} 失败: {e}")
         
         print("\n--- 脚本执行完毕 ---")
-        input("请按任意键关闭窗口...") # 确保执行面板不会自动关闭
+        input("请按任意键关闭窗口...")
 
     if __name__ == "__main__":
         main()
 
-    # 保持执行面板不关闭 (需要用户手动关闭)
-        input("按回车键返回主菜单...")
-
-def script_16():
-    """16.删除错误的 {} .py - 修复路径问题"""
-    print("=== 执行: 16.删除错误的 {} .py ===")
-    
-    import os
-    import re
-    import datetime
-    import sys
-
-    def extract_brackets(text):
-        """提取文本中的所有大括号标签"""
-        return re.findall(r'\{[^}]*\}', text)
-
-    def process_translation_pair(orig_line, trans_line, line_num, filename, log_file):
-        """处理一对原文和译文，检查大括号一致性"""
-        orig_brackets = extract_brackets(orig_line)
-        trans_brackets = extract_brackets(trans_line)
-        
-        # 如果译文没有大括号，直接跳过
-        if not trans_brackets:
-            return trans_line, False
-        
-        # 检查大括号顺序、内容、结构是否一致
-        if orig_brackets == trans_brackets:
-            return trans_line, False
-        
-        # 大括号不一致，删除译文中的所有大括号内容
-        repaired_line = re.sub(r'\{[^}]*\}', '', trans_line)
-        
-        # 记录修复日志
-        log_file.write(f"第{line_num}行 - 大括号不一致:\n")
-        log_file.write(f"原文: {orig_line.strip()}\n")
-        log_file.write(f"译文: {trans_line.strip()}\n")
-        log_file.write(f"修复后：{repaired_line.strip()}\n")
-        log_file.write(f"原文括号: {orig_brackets}\n")
-        log_file.write(f"译文括号: {trans_brackets}\n")
-        log_file.write("--------------------------------------------------\n")
-        
-        return repaired_line, True
-
-    def process_rpy_file(filepath, log_file):
-        """处理单个rpy文件"""
-        filename = os.path.basename(filepath)
-        print(f"检查修复文件: {filename}")
-        
-        log_file.write("=" * 60 + "\n")
-        log_file.write(f"检查修复文件: {filename}\n")
-        log_file.write(f"检查时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        log_file.write("=" * 60 + "\n")
-        
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-        except Exception as e:
-            print(f"❌ 读取文件失败: {e}")
-            log_file.write(f"❌ 读取文件失败: {e}\n")
-            log_file.write("=" * 60 + "\n\n")
-            return
-        
-        modified = False
-        new_lines = []
-        i = 0
-        total_lines = len(lines)
-        
-        while i < total_lines:
-            line = lines[i]
-            new_lines.append(line)
-            
-            # 检查是否是原文行（以#开头且包含引号）
-            if line.strip().startswith('#') and '"' in line:
-                orig_line = line
-                
-                # 检查下一行是否是译文行（不以#开头且包含引号）
-                if i + 1 < total_lines and not lines[i + 1].strip().startswith('#') and '"' in lines[i + 1]:
-                    trans_line = lines[i + 1]
-                    
-                    # 处理翻译对
-                    repaired_line, was_repaired = process_translation_pair(
-                        orig_line, trans_line, i + 2, filename, log_file
-                    )
-                    
-                    if was_repaired:
-                        modified = True
-                        new_lines.append(repaired_line + '\n')
-                        i += 2  # 跳过已处理的译文行
-                        continue
-            
-            i += 1
-        
-        # 如果有修改，写回文件
-        if modified:
-            try:
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    f.writelines(new_lines)
-                print(f"✅ 文件已修复")
-            except Exception as e:
-                print(f"❌ 写入文件失败: {e}")
-                log_file.write(f"❌ 写入文件失败: {e}\n")
-        else:
-            print("✅ 文件无需修复，所有翻译对的括号标记都一致！")
-            log_file.write("✅ 文件无需修复，所有翻译对的括号标记都一致！\n")
-        
-        log_file.write("=" * 60 + "\n\n")
-
-    def main():
-        """主函数"""
-        # 使用工具箱统一的根目录
-        script_dir = ROOT_DIR
-        
-        # 目标目录
-        target_dir = os.path.join(script_dir, "game", "tl", "schinese")
-        
-        if not os.path.exists(target_dir):
-            print(f"❌ 目标目录不存在: {target_dir}")
-            print("请确保脚本在游戏根目录运行")
-            input("按回车键退出...")
-            return
-        
-        # 设置日志文件
-        log_filepath = os.path.join(script_dir, "translation_repair.log")
-        
-        try:
-            with open(log_filepath, 'w', encoding='utf-8') as log_file:
-                log_file.write("翻译修复日志\n")
-                log_file.write(f"开始时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                log_file.write("=" * 60 + "\n\n")
-                
-                # 查找所有rpy文件
-                rpy_files = []
-                for root, dirs, files in os.walk(target_dir):
-                    for file in files:
-                        if file.endswith('.rpy'):
-                            rpy_files.append(os.path.join(root, file))
-                
-                if not rpy_files:
-                    print("❌ 未找到任何rpy文件")
-                    log_file.write("❌ 未找到任何rpy文件\n")
-                    return
-                
-                print(f"找到 {len(rpy_files)} 个rpy文件")
-                print("开始检查修复...\n")
-                
-                # 处理每个rpy文件
-                for rpy_file in rpy_files:
-                    process_rpy_file(rpy_file, log_file)
-                
-                log_file.write(f"完成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                print("\n✅ 所有文件处理完成！")
-                
-        except Exception as e:
-            print(f"❌ 程序执行出错: {e}")
-        
-        print("\n程序执行完毕，请查看 translation_repair.log 文件了解详细情况")
-        input("按回车键返回主菜单...")
-
-    # 调用主函数
-    main()
+    wait_for_return()
 
 def script_17():
-    """17.规则替换.py - 修复路径问题"""
+    """17.规则替换.py"""
     print("=== 执行: 17.规则替换.py ===")
+    ensure_root_dir()
+    if not ensure_translation_dir():
+        wait_for_return()
+        return
     
     import os
     import shutil
@@ -3637,11 +3269,9 @@ def script_17():
     def main():
         print("=== 🎮 RPY 文件处理脚本开始执行 ===\n")
 
-        # 1️⃣ 使用工具箱统一的根目录
         root_dir = ROOT_DIR
         print(f"【1】根目录路径：{root_dir}")
 
-        # 2️⃣ 创建 schinese 文件夹（如果不存在）
         schinese_dir = os.path.join(root_dir, "schinese")
         if not os.path.exists(schinese_dir):
             os.makedirs(schinese_dir)
@@ -3649,8 +3279,7 @@ def script_17():
         else:
             print(f"【2】目录已存在：{schinese_dir}")
 
-        # 3️⃣ 遍历读取 game/tl/schinese 下的 rpy 文件并复制到 schinese
-        src_dir = os.path.join(root_dir, "game", "tl", "schinese")
+        src_dir = get_tl_path()
         if not os.path.exists(src_dir):
             print(f"❌ 未找到源路径：{src_dir}")
             return
@@ -3664,7 +3293,6 @@ def script_17():
                 print(f"✅ 已复制：{file_name}")
         print("🎯 所有 rpy 文件复制完成。\n")
 
-        # 4️⃣ 读取 result.txt 规则
         result_file = os.path.join(root_dir, "result.txt")
         if not os.path.exists(result_file):
             print(f"❌ 未找到规则文件：{result_file}")
@@ -3679,9 +3307,9 @@ def script_17():
                     continue
                 parts = line.split("\t")
                 if len(parts) < 2:
-                    parts = line.split("  ")  # 尝试双空格分割
+                    parts = line.split("  ")
                 if len(parts) < 2:
-                    parts = line.split(" ")   # 尝试单空格分割
+                    parts = line.split(" ")
                 if len(parts) >= 2:
                     key = parts[0].strip()
                     value = parts[-1].strip()
@@ -3702,14 +3330,12 @@ def script_17():
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            # 应用所有替换规则
             for old, new in replace_rules:
                 if old in content:
                     count = content.count(old)
                     content = content.replace(old, new)
                     print(f"   ✳️ 替换 {count} 次：'{old}' → '{new}'")
 
-            # 保存修改后的文件
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
@@ -3717,54 +3343,81 @@ def script_17():
 
         print("✅ 所有替换操作完成！")
         print("\n=== 🎉 任务执行完毕 ===")
-        input("按回车键返回主菜单...")
+        wait_for_return()
 
-    # 调用主函数
     main()
 
 def script_18():
-    """18.规则还原.py - 修复路径问题"""
+    """18.规则还原.py"""
     print("=== 执行: 18.规则还原.py ===")
+    ensure_root_dir()
     
     import os
 
     def main():
-        # 1. 使用工具箱统一的根目录
         root_dir = ROOT_DIR
         schinese_dir = os.path.join(root_dir, "schinese")
         result_file = os.path.join(root_dir, "result.txt")
 
-        # 2. 读取替换规则（支持空格或 Tab 分隔）
+        if not os.path.exists(schinese_dir):
+            print(f"❌ 错误：schinese文件夹不存在: {schinese_dir}")
+            print("请先运行功能17生成schinese文件夹")
+            wait_for_return()
+            return
+
+        if not os.path.exists(result_file):
+            print(f"❌ 错误：result.txt文件不存在: {result_file}")
+            print("请先运行功能02生成替换规则")
+            wait_for_return()
+            return
+
         replace_rules = []
-        with open(result_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):  # 跳过空行或注释
-                    continue
-                # 使用任意空白符分割（空格或 Tab）
-                parts = line.split(None, 1)  # 只分割成两部分
-                if len(parts) != 2:
-                    print(f"跳过格式不正确的行: {line}")
-                    continue
-                replace_content, match_content = parts
-                replace_rules.append((match_content, replace_content))
+        try:
+            with open(result_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split(None, 1)
+                    if len(parts) != 2:
+                        print(f"跳过格式不正确的行: {line}")
+                        continue
+                    replace_content, match_content = parts
+                    replace_rules.append((match_content, replace_content))
+        except Exception as e:
+            print(f"❌ 读取result.txt文件时出错: {e}")
+            wait_for_return()
+            return
 
         print(f"共读取 {len(replace_rules)} 条替换规则")
 
-        # 3. 遍历 schinese 目录下的所有 .rpy 文件
         rpy_files = []
-        for root, dirs, files in os.walk(schinese_dir):
-            for file in files:
-                if file.endswith(".rpy"):
-                    rpy_files.append(os.path.join(root, file))
+        try:
+            for root, dirs, files in os.walk(schinese_dir):
+                for file in files:
+                    if file.endswith(".rpy"):
+                        rpy_files.append(os.path.join(root, file))
+        except Exception as e:
+            print(f"❌ 遍历schinese文件夹时出错: {e}")
+            wait_for_return()
+            return
+
+        if not rpy_files:
+            print("❌ 在schinese文件夹中未找到任何rpy文件")
+            wait_for_return()
+            return
 
         print(f"找到 {len(rpy_files)} 个 rpy 文件需要处理")
 
-        # 4. 逐文件处理
+        processed_count = 0
         for rpy_file in rpy_files:
-            print(f"\n处理文件: {rpy_file}")
-            with open(rpy_file, "r", encoding="utf-8") as f:
-                lines = f.readlines()
+            print(f"\n处理文件: {os.path.basename(rpy_file)}")
+            try:
+                with open(rpy_file, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+            except Exception as e:
+                print(f"❌ 读取文件失败: {rpy_file}, 错误: {e}")
+                continue
 
             changed = False
             new_lines = []
@@ -3774,64 +3427,41 @@ def script_18():
                     if match_content in line:
                         line = line.replace(match_content, replace_content)
                         changed = True
-                        # 打印具体行号和内容变化
-                        print(f"行 {i}: '{match_content}' -> '{replace_content}'")
+                        print(f"  行 {i}: '{match_content}' -> '{replace_content}'")
                 new_lines.append(line)
 
-            # 5. 保存文件
             if changed:
-                with open(rpy_file, "w", encoding="utf-8") as f:
-                    f.writelines(new_lines)
-                print(f"文件已保存: {rpy_file}")
+                try:
+                    with open(rpy_file, "w", encoding="utf-8") as f:
+                        f.writelines(new_lines)
+                    print(f"✅ 文件已保存: {os.path.basename(rpy_file)}")
+                    processed_count += 1
+                except Exception as e:
+                    print(f"❌ 保存文件失败: {rpy_file}, 错误: {e}")
             else:
-                print("无内容需要替换，文件保持不变")
+                print("   无内容需要替换，文件保持不变")
 
-        print("\n全部文件处理完成！")
-        input("按回车键返回主菜单...")
+        print(f"\n✅ 全部文件处理完成！成功处理 {processed_count}/{len(rpy_files)} 个文件")
+        wait_for_return()
 
-    # 调用主函数
     main()
 
 # ============================ 主程序 ============================
 
-def clear_screen():
-    """清屏函数"""
-    import os
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-def show_step1():
-    """显示第二步内容"""
-    clear_screen()
-    print("--------------   功能一   -------------")
-    print("01：放入游戏根目录内运行，先使用解包工具解包RPA")
-    print("02：使用对应游戏版本的官方SDK生成翻译（schinese）")
-    print("03：生成替换规则→生成替换表→提取人名→翻译人名rpy→生成人名表格")
-    print("04：翻译人名rpy放入schinese内→使用 KeywordGacha 生成术语表  整合人名与术语表 ")
-    print("05：使用  简单处理name.xlsx文件→手动审查术语表→提取额外文本")
-    print("06：术语表替换表导入AiNI内进行翻译，翻译完成后进行替换")
-    print("--------------   功能区二   -------------")
-    print("07：（删除根目录旧的name.rpy）审查术语表结束后使用 xlsx转txt →生成新的name.rpy")
-    print("08：提取额外文本3.0→术语表替换表导入AiNI内进行翻译，翻译完成后进行替换")
-    print("--------------  功能区三   -------------")
-    print("09：翻译文本全部放入schinese后→插入中文设置模块→生成style字体控制以及打包模块")
-    print("--------------  功能区四   -------------")
-    print("10：对某些特殊文本再次进行额外提取，需要自己手动筛选（有代码内容，但是比去原文本里慢慢扣方便了一点）")
-    print("--------------   其他说明   -------------")
-    print("11：额外文本提取规则与筛选规则参考使用了 马老师工具箱 ")
-    print("12：此脚本拥有两个功能区，常规使用只需要功能区一即可：")
-    print("            功能区一是通用功能；")
-    print("            功能区二则是将术语表转换成人名文件（但其实很多余因为会提取额外文本的）")
-    print("            功能区三则是插入中文设置、生成字体、特殊本文写入replace，翻译文本排除 {}错误")
-    print("            功能区四则是提取某些特殊的文本（建议使用15），需要自己鉴别是否为文本！！！")
-    print("13：记住不要只关注脚本，本地生成的 记忆池文件 删除后在进行下一步 （虽然其实应该也没问题）！！！！")
-    print("14：此脚本由 区区一只呆唯 制作  ---严格禁止商用---")
-    print("15：公开版1.3")
-    input("按回车键进入第三步...")
-
 def show_main_menu():
     """显示主菜单"""
     clear_screen()
+    print("------------------------------------")
+    print("         renpy工具箱4.5")
+    print("------------------------------------")
+    
+    current_root = ROOT_DIR if ROOT_DIR else get_root_dir()
+    print(f"当前游戏根目录: {current_root}")
+    print(f"当前翻译文件夹: {TRANSLATION_DIR}")
+    print("------------------------------------")
+    
     print("--------------   功能区一   -------------")
+    print(" 00.选择游戏根目录")
     print(" 01.删除 rpyc")
     print(" 02.生成替换规则3.0")
     print(" 03.生成正反替换表")
@@ -3853,63 +3483,31 @@ def show_main_menu():
     print("--------------   功能区四   -------------")
     print(" 14.提取额外额外文本3.6.py")
     print(" 15.提取额外额外文本3.9.py")
-    print(" 00：退出脚本")
     print("=" * 50)
 
 def main():
     """主程序"""
+    global ROOT_DIR
+    if not ROOT_DIR:
+        ROOT_DIR = get_root_dir()
     
-    # 第一步：显示功能说明
-    show_step1()
-    
-    # 第二步：主循环
     while True:
         show_main_menu()
         choice = input("请选择功能 (00-18): ").strip()
         
-        if choice == "00":
-            print("退出脚本")
-            break
-        elif choice == "01":
-            script_01()
-        elif choice == "02":
-            script_02()
-        elif choice == "03":
-            script_03()
-        elif choice == "04":
-            script_04()
-        elif choice == "05":
-            script_05()
-        elif choice == "06":
-            script_06()
-        elif choice == "07":
-            script_07()
-        elif choice == "08":
-            script_08()
-        elif choice == "09":
-            script_09()
-        elif choice == "10":
-            script_10()
-        elif choice == "11":
-            script_11()
-        elif choice == "12":
-            script_12()
-        elif choice == "13":
-            script_13()
-        elif choice == "14":
-            script_14()
-        elif choice == "15":
-            script_15()
-        elif choice == "16":
-            script_16()
-        elif choice == "17":
-            script_17()
-        elif choice == "18":
-            script_18()
+        script_functions = {
+            "00": script_00, "01": script_01, "02": script_02, "03": script_03,
+            "04": script_04, "05": script_05, "06": script_06, "07": script_07,
+            "08": script_08, "09": script_09, "10": script_10, "11": script_11,
+            "12": script_12, "13": script_13, "14": script_14, "15": script_15,
+            "16": script_16, "17": script_17, "18": script_18
+        }
+        
+        if choice in script_functions:
+            script_functions[choice]()
         else:
             print("无效选择，请重新输入")
             input("按回车键继续...")
 
 if __name__ == "__main__":
     main()
-    
